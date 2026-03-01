@@ -1,0 +1,21 @@
+# Variables de entorno y API keys
+.env
+.env.local
+.env.*
+
+# Vectorstore (datos grandes/locales)
+vectorstore/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Archivos del sistema Windows
+Thumbs.db
+desktop.ini
