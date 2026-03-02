@@ -7,6 +7,8 @@ from oberoende_bot.app.services.smalltalk_service import smalltalk_answer
 from oberoende_bot.app.services.rag_answer_service import ask_rag_answer
 from oberoende_bot.app.services.memory_service import add_user_message, add_ai_message
 from oberoende_bot.app.services.state_store_sqlite import get_state, update_state, state_dict
+from oberoende_bot.app.services.name_extractor import extract_name
+from oberoende_bot.app.services.user_profile_store_sqlite import set_name
 
 HANDOFF_MESSAGE = (
     "¡Claro! Para ayudarte mejor, déjame derivar tu solicitud a un asesor.\n"
@@ -26,6 +28,17 @@ def decide_node(s: BotState) -> BotState:
     # guardar mensaje en memoria conversacional
     add_user_message(uid, msg)
 
+    name = extract_name(msg)
+    if name:
+        set_name(uid, name)
+        resp = f"¡Encantado, {name}! 😊 ¿En qué te puedo ayudar sobre nuestras joyas (precios, materiales, envíos, horarios)?"
+        s["response"] = resp
+        s["decision"] = "smalltalk"  # o una decisión especial
+        add_ai_message(uid, resp)
+        # opcional: actualizar estado
+        update_state(uid, pending_followup=False)
+        return s
+    
     st = state_dict(uid)
     decision = interpret_message(msg, st)
     s["decision"] = decision

@@ -1,6 +1,9 @@
 # oberoende_bot/app/services/smalltalk_service.py
 import re
+
+from distro import name
 from oberoende_bot.app.services.state_store_sqlite import get_state
+from oberoende_bot.app.services.user_profile_store_sqlite import get_name
 
 def _normalize(text: str) -> str:
     text = text.strip().lower()
@@ -17,7 +20,9 @@ _THANKS = {"gracias", "muchas gracias", "genial gracias", "perfecto gracias"}
 def smalltalk_answer(user_id: str, user_message: str) -> str:
     st = get_state(user_id)
     norm = _normalize(user_message)
-
+    name = get_name(user_id)
+    if name:
+        return f"¡Hola, {name}! 👋 ¿Qué estás buscando: anillos, collares, pulseras o aretes?"
     # Si estábamos esperando followup, NO respondemos genérico
     if st.pending_followup and norm in {"ok", "ya", "listo", "perfecto", "dale", "okey"}:
         prod = st.last_product or "el producto"
