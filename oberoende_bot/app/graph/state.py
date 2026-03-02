@@ -1,7 +1,7 @@
-from typing import TypedDict
+from typing import TypedDict, Optional
 
-class AgentState(TypedDict):
+class BotState(TypedDict):
     user_id: str
     user_message: str
-    intent: str
     response: str
+    # estado persistente externo
