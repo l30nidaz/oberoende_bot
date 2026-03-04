@@ -63,7 +63,7 @@ def ask_llm(question: str, user_id: str) -> str:
     # 0) Smalltalk / saludos antes de RAG
     smalltalk = _handle_smalltalk(norm)
     if smalltalk:
-        add_user_message(user_id, question)
+        #add_user_message(user_id, question)
         add_ai_message(user_id, smalltalk)
         return smalltalk
 
@@ -77,7 +77,7 @@ def ask_llm(question: str, user_id: str) -> str:
     # 2) Vectorstore (ya inicializado en startup)
     vectorstore = get_vectorstore()
     if vectorstore is None:
-        add_user_message(user_id, question)
+        #add_user_message(user_id, question)
         add_ai_message(user_id, FALLBACK_MESSAGE)
         return FALLBACK_MESSAGE
 
@@ -94,13 +94,13 @@ def ask_llm(question: str, user_id: str) -> str:
     try:
         docs = retriever.invoke(question)
     except Exception:
-        add_user_message(user_id, question)
+        #add_user_message(user_id, question)
         add_ai_message(user_id, FALLBACK_MESSAGE)
         return FALLBACK_MESSAGE
 
     context = "\n\n".join(d.page_content for d in docs) if docs else ""
     if not context.strip():
-        add_user_message(user_id, question)
+        #add_user_message(user_id, question)
         add_ai_message(user_id, FALLBACK_MESSAGE)
         return FALLBACK_MESSAGE
 
@@ -126,6 +126,6 @@ def ask_llm(question: str, user_id: str) -> str:
         "question": question
     })
 
-    add_user_message(user_id, question)
+    #add_user_message(user_id, question)
     add_ai_message(user_id, answer)
     return answer

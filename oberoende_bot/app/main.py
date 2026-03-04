@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 
+from oberoende_bot.app.services.memory_service import init_memory_db
 from oberoende_bot.app.services.whatsapp_service import handle_whatsapp
 from oberoende_bot.app.services.rag_service import initialize_vectorstore
 from oberoende_bot.app.services.state_store_sqlite import init_state_db
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     init_state_db()
     init_user_profile_db()
     init_leads_db()
+    init_memory_db() 
     initialize_vectorstore(force_rebuild=False)
     yield
     print("🛑 Cerrando aplicación...")

@@ -16,6 +16,7 @@ venv/
 env/
 .venv/
 trabajo_venv/
+*.db
 
 # Archivos del sistema Windows
 Thumbs.db

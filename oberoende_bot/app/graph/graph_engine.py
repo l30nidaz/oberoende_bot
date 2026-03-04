@@ -12,12 +12,8 @@ from oberoende_bot.app.services.user_profile_store_sqlite import set_name
 
 
 HANDOFF_MESSAGE = (
-    "¡Genial! 💎\n"
-    "Para ayudarte mejor, respóndeme así:\n\n"
-    "Modelo: ___\n"
-    "Distrito: ___\n"
-    "Pago: Yape / Plin / Transferencia\n\n"
-    "Con eso un asesor te contacta enseguida 😊"
+    "¡Genial! 💎 Para ayudarte mejor:\n\n"
+    "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre o enviar foto)\n"
 )
 
 class BotState(TypedDict):
@@ -105,10 +101,19 @@ def smalltalk_node(s: BotState) -> BotState:
 
 def handoff_node(s: BotState) -> BotState:
     uid = s["user_id"]
+
     s["response"] = HANDOFF_MESSAGE
     add_ai_message(uid, HANDOFF_MESSAGE)
-    # IMPORTANTE: dejar pendiente para capturar datos del lead
-    update_state(uid, last_intent="handoff", pending_followup=True)
+
+    update_state(
+        uid,
+        last_intent="handoff",
+        pending_followup=True,
+        lead_stage="await_model",
+        lead_model=None,
+        lead_district=None,
+        lead_payment=None
+    )
     return s
 
 def lead_capture_node(s: BotState) -> BotState:
@@ -158,6 +163,95 @@ def lead_capture_node(s: BotState) -> BotState:
     update_state(uid, pending_followup=False)  # cerramos captura
     return s
 
+def lead_flow_node(s: BotState) -> BotState:
+    uid = s["user_id"]
+    msg = (s["user_message"] or "").strip()
+
+    from oberoende_bot.app.services.state_store_sqlite import get_state, update_state
+    from oberoende_bot.app.services.user_profile_store_sqlite import get_name
+    from oberoende_bot.app.services.leads_store import save_lead
+    from oberoende_bot.app.services.email_service import notify_owner_lead
+
+    st = get_state(uid)
+    profile_name = get_name(uid) or "Cliente"
+
+    # Seguridad: si no hay etapa, reinicia a modelo
+    stage = st.lead_stage or "await_model"
+
+    # Permitir cancelar
+    if msg.lower() in {"cancelar", "salir", "no"}:
+        resp = "Entendido ✅ Si deseas retomar la compra, escríbeme nuevamente."
+        s["response"] = resp
+        add_ai_message(uid, resp)
+        update_state(uid, pending_followup=False, lead_stage=None, lead_model=None, lead_district=None, lead_payment=None)
+        return s
+
+    if stage == "await_model":
+        update_state(uid, lead_model=msg, lead_stage="await_district")
+        resp = "Perfecto 👍 ¿En qué distrito estás?"
+        s["response"] = resp
+        add_ai_message(uid, resp)
+        return s
+
+    if stage == "await_district":
+        update_state(uid, lead_district=msg, lead_stage="await_payment")
+        resp = "Gracias ✅ ¿Cómo prefieres pagar: Yape, Plin o transferencia?"
+        s["response"] = resp
+        add_ai_message(uid, resp)
+        return s
+
+    # await_payment → guardamos todo
+    if stage == "await_payment":
+        # actualiza payment
+        st = update_state(uid, lead_payment=msg)
+
+        product = st.lead_model or ""
+        district = st.lead_district or ""
+        payment = st.lead_payment or ""
+
+        # Guardar lead
+        save_lead(
+            user_id=uid,
+            channel="whatsapp",
+            name=profile_name,
+            product=product,
+            district=district,
+            payment_method=payment,
+            raw_message=f"Modelo: {product}\nDistrito: {district}\nPago: {payment}"
+        )
+
+        # Enviar email (NO tumbar el webhook si falla)
+        lead_text_email = (
+            f"NUEVO LEAD 💎\n\n"
+            f"Cliente (WhatsApp): {uid}\n"
+            f"Nombre: {profile_name}\n"
+            f"Modelo: {product}\n"
+            f"Distrito: {district}\n"
+            f"Pago: {payment}\n"
+        )
+        try:
+            notify_owner_lead(user_id=uid, channel="whatsapp", lead_text=lead_text_email)
+        except Exception as e:
+            print("⚠️ Error enviando email:", repr(e))
+
+        resp = (
+            "¡Listo! ✅ Ya registré tus datos.\n"
+            "Un asesor te contactará en breve para ayudarte con tu compra. 💎"
+        )
+        s["response"] = resp
+        add_ai_message(uid, resp)
+
+        # Cerrar flujo
+        update_state(uid, pending_followup=False, lead_stage=None, lead_model=None, lead_district=None, lead_payment=None)
+        return s
+
+    # fallback
+    resp = "Vamos de nuevo 🙂 ¿Qué modelo te interesa?"
+    s["response"] = resp
+    add_ai_message(uid, resp)
+    update_state(uid, lead_stage="await_model")
+    return s
+
 import re
 
 def extract_lead_fields(text: str):
@@ -194,11 +288,13 @@ def router(s: BotState) -> str:
     uid = s["user_id"]
     decision = s.get("decision")
     st = get_state(uid)
-
+    # ✅ Si estamos en handoff guiado, seguimos el flujo
+    if st.last_intent == "handoff" and st.pending_followup and st.lead_stage:
+        return "lead_flow"
     # Si estamos en handoff y está pendiente, capturamos lead
     if st.last_intent == "handoff" and st.pending_followup:
         return "lead_capture"
-
+    
     if decision == "continue_followup" and st.pending_followup:
         return "followup"
     if decision == "smalltalk":
@@ -215,9 +311,10 @@ def build_graph():
     g.add_node("smalltalk", smalltalk_node)
     g.add_node("handoff", handoff_node)
     g.add_node("lead_capture", lead_capture_node)
+    g.add_node("lead_flow", lead_flow_node)
     g.set_entry_point("decide")
     g.add_conditional_edges("decide", router, {
-        
+        "lead_flow": "lead_flow",
         "followup": "followup",
         "rag": "rag",
         "smalltalk": "smalltalk",
@@ -230,6 +327,8 @@ def build_graph():
     g.add_edge("smalltalk", END)
     g.add_edge("handoff", END)
     g.add_edge("lead_capture", END)
+    g.add_edge("lead_flow", END)
     return g.compile()
+
 
 graph = build_graph()

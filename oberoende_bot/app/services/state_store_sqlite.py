@@ -16,7 +16,10 @@ class ConversationState:
     last_answer: Optional[str] = None
     last_question: Optional[str] = None
     turn_summary: Optional[str] = None
-
+    lead_stage: Optional[str] = None          # await_model | await_district | await_payment
+    lead_model: Optional[str] = None
+    lead_district: Optional[str] = None
+    lead_payment: Optional[str] = None
 
 def init_state_db() -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -31,7 +34,11 @@ def init_state_db() -> None:
             pending_followup INTEGER,
             last_answer TEXT,
             last_question TEXT,
-            turn_summary TEXT
+            turn_summary TEXT,
+            lead_stage TEXT,
+            lead_model TEXT,
+            lead_district TEXT,
+            lead_payment TEXT
         )
         """
     )
@@ -49,6 +56,10 @@ def _row_to_state(row) -> ConversationState:
         last_answer=row[4],
         last_question=row[5],
         turn_summary=row[6],
+        lead_stage=row[7],
+        lead_model=row[8],
+        lead_district=row[9],
+        lead_payment=row[10],
     )
 
 
@@ -57,7 +68,7 @@ def get_state(user_id: str) -> ConversationState:
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT last_intent, last_topic, last_product, pending_followup, last_answer, last_question, turn_summary
+        SELECT last_intent, last_topic, last_product, pending_followup, last_answer, last_question, turn_summary, lead_stage, lead_model, lead_district, lead_payment
         FROM conversation_state
         WHERE user_id = ?
         """,
@@ -71,8 +82,8 @@ def get_state(user_id: str) -> ConversationState:
         cur.execute(
             """
             INSERT INTO conversation_state
-            (user_id, last_intent, last_topic, last_product, pending_followup, last_answer, last_question, turn_summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, last_intent, last_topic, last_product, pending_followup, last_answer, last_question, turn_summary, lead_stage, lead_model, lead_district, lead_payment)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -83,6 +94,10 @@ def get_state(user_id: str) -> ConversationState:
                 st.last_answer,
                 st.last_question,
                 st.turn_summary,
+                st.lead_stage,
+                st.lead_model,
+                st.lead_district,
+                st.lead_payment,
             ),
         )
         conn.commit()
@@ -113,7 +128,11 @@ def update_state(user_id: str, **kwargs: Any) -> ConversationState:
             pending_followup = ?,
             last_answer = ?,
             last_question = ?,
-            turn_summary = ?
+            turn_summary = ?,
+            lead_stage = ?,
+            lead_model = ?,
+            lead_district = ?,
+            lead_payment = ?
         WHERE user_id = ?
         """,
         (
@@ -124,6 +143,10 @@ def update_state(user_id: str, **kwargs: Any) -> ConversationState:
             st.last_answer,
             st.last_question,
             st.turn_summary,
+            st.lead_stage,
+            st.lead_model,
+            st.lead_district,
+            st.lead_payment,
             user_id,
         ),
     )
