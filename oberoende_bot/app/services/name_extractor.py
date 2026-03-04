@@ -9,7 +9,7 @@ _PATTERNS = [
 ]
 
 def extract_name(text: str) -> Optional[str]:
-    t = text.strip()
+    t = text.strip() 
     for p in _PATTERNS:
         m = re.search(p, t, flags=re.IGNORECASE)
         if m:

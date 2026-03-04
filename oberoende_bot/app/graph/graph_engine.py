@@ -10,9 +10,14 @@ from oberoende_bot.app.services.state_store_sqlite import get_state, update_stat
 from oberoende_bot.app.services.name_extractor import extract_name
 from oberoende_bot.app.services.user_profile_store_sqlite import set_name
 
+
 HANDOFF_MESSAGE = (
-    "¡Claro! Para ayudarte mejor, déjame derivar tu solicitud a un asesor.\n"
-    "¿Qué producto te interesa y en qué ciudad estás para el envío?"
+    "¡Genial! 💎\n"
+    "Para ayudarte mejor, respóndeme así:\n\n"
+    "Modelo: ___\n"
+    "Distrito: ___\n"
+    "Pago: Yape / Plin / Transferencia\n\n"
+    "Con eso un asesor te contacta enseguida 😊"
 )
 
 class BotState(TypedDict):
@@ -102,21 +107,105 @@ def handoff_node(s: BotState) -> BotState:
     uid = s["user_id"]
     s["response"] = HANDOFF_MESSAGE
     add_ai_message(uid, HANDOFF_MESSAGE)
-    update_state(uid, last_intent="handoff", pending_followup=False)
+    # IMPORTANTE: dejar pendiente para capturar datos del lead
+    update_state(uid, last_intent="handoff", pending_followup=True)
     return s
+
+def lead_capture_node(s: BotState) -> BotState:
+    uid = s["user_id"]
+    msg = s["user_message"]
+
+    from oberoende_bot.app.services.leads_store import save_lead
+    from oberoende_bot.app.services.user_profile_store_sqlite import get_name
+    from oberoende_bot.app.services.email_service import notify_owner_lead
+
+    profile_name = get_name(uid) or "Cliente"
+
+    product, district, payment = extract_lead_fields(msg)
+
+    # 1) Guardar lead estructurado
+    save_lead(
+        user_id=uid,
+        channel="whatsapp",
+        name=profile_name,
+        product=product,
+        district=district,
+        payment_method=payment,
+        raw_message=msg
+    )
+
+    # 2) Enviar email con info accionable (sin cambiar tu firma actual)
+    lead_text_email = (
+        f"NUEVO LEAD 💎\n\n"
+        f"Cliente (WhatsApp): {uid}\n"
+        f"Nombre: {profile_name}\n"
+        f"Producto/Interés: {product or '(no especificado)'}\n"
+        f"Distrito: {district or '(no especificado)'}\n\n"
+        f"Mensaje completo:\n{msg}\n"
+    )
+    try:
+        notify_owner_lead(user_id=uid, channel="whatsapp", lead_text=lead_text_email)
+    except Exception as e:
+        print(f"⚠️ Error al enviar email de lead: {e}")
+
+    resp = (
+        "¡Gracias! ✅ Ya registré tus datos.\n"
+        "Un asesor te contactará en breve para ayudarte con tu compra. 💎"
+    )
+
+    s["response"] = resp
+    add_ai_message(uid, resp)
+    update_state(uid, pending_followup=False)  # cerramos captura
+    return s
+
+import re
+
+def extract_lead_fields(text: str):
+    product = ""
+    district = ""
+    payment = ""
+
+    # Buscar con etiquetas
+    m_product = re.search(r"modelo\s*:\s*(.+)", text, re.IGNORECASE)
+    if m_product:
+        product = m_product.group(1).strip()
+
+    m_district = re.search(r"distrito\s*:\s*(.+)", text, re.IGNORECASE)
+    if m_district:
+        district = m_district.group(1).strip()
+
+    m_payment = re.search(r"pago\s*:\s*(.+)", text, re.IGNORECASE)
+    if m_payment:
+        payment = m_payment.group(1).strip()
+
+    # Fallback simple si no usaron etiquetas
+    if not product or not district:
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if not product and len(lines) >= 1:
+            product = lines[0]
+        if not district and len(lines) >= 2:
+            district = lines[1]
+        if not payment and len(lines) >= 3:
+            payment = lines[2]
+
+    return product, district, payment
 
 def router(s: BotState) -> str:
     uid = s["user_id"]
     decision = s.get("decision")
+    st = get_state(uid)
 
-    # Si el router dice continuar followup y realmente hay followup pendiente
-    if decision == "continue_followup" and get_state(uid).pending_followup:
+    # Si estamos en handoff y está pendiente, capturamos lead
+    if st.last_intent == "handoff" and st.pending_followup:
+        return "lead_capture"
+
+    if decision == "continue_followup" and st.pending_followup:
         return "followup"
     if decision == "smalltalk":
         return "smalltalk"
     if decision == "handoff":
         return "handoff"
-    return "rag"  # default
+    return "rag"
 
 def build_graph():
     g = StateGraph(BotState)
@@ -125,20 +214,22 @@ def build_graph():
     g.add_node("rag", rag_node)
     g.add_node("smalltalk", smalltalk_node)
     g.add_node("handoff", handoff_node)
-
+    g.add_node("lead_capture", lead_capture_node)
     g.set_entry_point("decide")
     g.add_conditional_edges("decide", router, {
+        
         "followup": "followup",
         "rag": "rag",
         "smalltalk": "smalltalk",
-        "handoff": "handoff"
+        "handoff": "handoff",
+        "lead_capture": "lead_capture"
     })
 
     g.add_edge("followup", END)
     g.add_edge("rag", END)
     g.add_edge("smalltalk", END)
     g.add_edge("handoff", END)
-
+    g.add_edge("lead_capture", END)
     return g.compile()
 
 graph = build_graph()

@@ -6,7 +6,8 @@ async def handle_whatsapp(request: Request):
     form = await request.form()
     from_number = form.get("From")
     message_body = form.get("Body")
-
+    print("FROM:", from_number)
+    print("BODY:", message_body)
     if not message_body:
         return Response("OK", status_code=200)
 
