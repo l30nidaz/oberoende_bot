@@ -1,8 +1,7 @@
 # oberoende_bot/app/services/smalltalk_service.py
 import re
 
-from distro import name
-from oberoende_bot.app.services.state_store_sqlite import get_state
+from oberoende_bot.app.services.state_store_sqlite import get_state, update_state
 from oberoende_bot.app.services.user_profile_store_sqlite import get_name
 
 def _normalize(text: str) -> str:
@@ -13,17 +12,39 @@ def _normalize(text: str) -> str:
 
 _GREETINGS = {
     "hola", "holi", "buenas", "buenos dias", "buen día", "buenos días",
-    "buenas tardes", "buenas noches", "hey", "que tal", "qué tal", "hi"
+    "buenas tardes", "buenas noches", "hey", "que tal", "qué tal", "hi",
+    "menu", "menú", "inicio", "empezar", "start"
 }
+
 _THANKS = {"gracias", "muchas gracias", "genial gracias", "perfecto gracias"}
+
+_MENU_TEXT = (
+    "¡Hola! 👋 Bienvenido a Oberoende 💎\n\n"
+    "¿En qué puedo ayudarte hoy?\n\n"
+    "1️⃣ Ver catálogo\n"
+    "2️⃣ Saber precios\n"
+    "3️⃣ Comprar un modelo\n"
+    "4️⃣ Hablar con asesor"
+)
+
+def sales_menu(name: str | None = None) -> str:
+    if name:
+        return (
+            f"¡Hola, {name}! 👋 Bienvenido a Oberoende 💎\n\n"
+            "¿En qué puedo ayudarte hoy?\n\n"
+            "1️⃣ Ver catálogo\n"
+            "2️⃣ Saber precios\n"
+            "3️⃣ Comprar un modelo\n"
+            "4️⃣ Hablar con asesor"
+        )
+    return _MENU_TEXT
 
 def smalltalk_answer(user_id: str, user_message: str) -> str:
     st = get_state(user_id)
     norm = _normalize(user_message)
     name = get_name(user_id)
-    if name:
-        return f"¡Hola, {name}! 👋 ¿Qué estás buscando: anillos, collares, pulseras o aretes?"
-    # Si estábamos esperando followup, NO respondemos genérico
+
+    # Si el usuario estaba en followup pendiente y responde "ok", mantenemos el flujo actual
     if st.pending_followup and norm in {"ok", "ya", "listo", "perfecto", "dale", "okey"}:
         prod = st.last_product or "el producto"
         return (
@@ -34,14 +55,20 @@ def smalltalk_answer(user_id: str, user_message: str) -> str:
             "Respóndeme con 1, 2 o 3."
         )
 
+    # Menú principal
     if norm in _GREETINGS:
+        return sales_menu(name)
+
+    # Opción 2 del menú principal
+    if norm in {"2", "2️⃣", "precio", "precios", "saber precios", "ver precios"}:
         return (
-            "¡Hola! 👋 Soy el asistente virtual de la joyería.\n"
-            "Puedo ayudarte con precios, materiales, envíos, horarios y personalización.\n"
-            "¿Qué estás buscando: anillos, collares, pulseras o aretes?"
+            "¡Claro! 💎\n"
+            "Dime qué modelo te interesa y te ayudo con el precio.\n\n"
+            "Puedes escribir el nombre del modelo o enviarme una foto/captura."
         )
 
     if norm in _THANKS:
-        return "¡Con gusto! 😊 ¿Te ayudo con algo más de la joyería?"
+        update_state(user_id, pending_followup=False)
+        return "¡Con gusto! 😊 Si quieres, escribe *menú* para ver las opciones otra vez."
 
-    return "Entendido ✅ ¿Qué consulta tienes sobre nuestros productos o envíos?"
+    return sales_menu(name)
