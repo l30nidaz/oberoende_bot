@@ -2,15 +2,6 @@ from fastapi import Request
 
 from oberoende_bot.app.services.provider_config import get_whatsapp_provider
 
-# URLs de catálogo compartidas
-CATALOG_IMAGES = [
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo3.jpg",
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo1.jpg",
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo2.png",
-]
-
-CATALOG_PDF_URL = "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo.pdf"
-
 
 def send_whatsapp_text(to_number: str, body: str):
     provider = get_whatsapp_provider()
@@ -44,13 +35,13 @@ def send_whatsapp_document(
     return impl(to_number, document_url, filename, caption)
 
 
-def send_catalog_whatsapp(to_number: str):
+def send_catalog_whatsapp(to_number: str, business_config: dict):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_catalog_whatsapp as impl
     else:
         from oberoende_bot.app.services.meta_whatsapp_service import send_catalog_whatsapp as impl
-    return impl(to_number)
+    return impl(to_number, business_config)
 
 
 async def handle_whatsapp(request: Request):

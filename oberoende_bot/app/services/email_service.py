@@ -3,8 +3,12 @@ import smtplib
 from email.mime.text import MIMEText
 
 
-def notify_owner_lead(user_id: str, channel: str, lead_text: str):
-    
+def notify_owner_lead(
+    user_id: str,
+    channel: str,
+    lead_text: str,
+    subject: str | None = None
+):
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
     smtp_user = os.getenv("SMTP_USER")
@@ -16,23 +20,15 @@ def notify_owner_lead(user_id: str, channel: str, lead_text: str):
     print("SMTP_USER(main):", os.getenv("SMTP_USER"))
     print("FROM_EMAIL(main):", os.getenv("FROM_EMAIL"))
     print("OWNER_EMAIL(main):", os.getenv("OWNER_EMAIL"))
-    print("SMTP_PASS(main):", os.getenv("SMTP_PASS"))
-    
+
     if not all([smtp_host, smtp_user, smtp_pass, owner_email]):
-        # En producción: loggear esto
         print("⚠️ Configuración SMTP incompleta, no se puede enviar email de lead")
         return
 
-    subject = f"Nuevo lead ({channel}) - Oberoende"
-    body = (
-        f"NUEVO LEAD 💎\n\n"
-        f"Canal: {channel}\n"
-        f"Cliente (user_id): {user_id}\n\n"
-        f"Mensaje / datos:\n{lead_text}\n"
-    )
+    email_subject = subject or f"Nuevo lead ({channel})"
 
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
+    msg = MIMEText(lead_text, "plain", "utf-8")
+    msg["Subject"] = email_subject
     msg["From"] = from_email
     msg["To"] = owner_email
 

@@ -13,12 +13,18 @@ def init_memory_db() -> None:
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT,
-            role TEXT,
-            message TEXT,
-            timestamp TEXT
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id   TEXT    NOT NULL,
+            role      TEXT    NOT NULL,
+            message   TEXT    NOT NULL,
+            timestamp TEXT    NOT NULL
         )
+    """)
+    # Índice en user_id: hace que SELECT … WHERE user_id = ? sea O(log n)
+    # en vez de un full-table-scan que crece con cada mensaje.
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_conversations_user_id
+        ON conversations (user_id)
     """)
     conn.commit()
     conn.close()
@@ -27,10 +33,13 @@ def init_memory_db() -> None:
 def _save_message(user_id: str, role: str, message: str) -> None:
     conn = sqlite3.connect(DB_PATH, timeout=10)
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO conversations (user_id, role, message, timestamp)
         VALUES (?, ?, ?, ?)
-    """, (user_id, role, message, datetime.utcnow().isoformat()))
+        """,
+        (user_id, role, message, datetime.utcnow().isoformat()),
+    )
     conn.commit()
     conn.close()
 
@@ -45,22 +54,25 @@ def add_ai_message(user_id: str, message: str) -> None:
 
 def get_history(user_id: str, limit: int = 12) -> List[BaseMessage]:
     """
-    Devuelve historial como mensajes LangChain, en orden cronológico.
-    limit=12 suele ir bien (6 turnos ida/vuelta) para costos.
+    Devuelve el historial como mensajes LangChain en orden cronológico.
+    limit=12 cubre 6 turnos ida/vuelta, buen equilibrio entre contexto y costo.
     """
     conn = sqlite3.connect(DB_PATH, timeout=10)
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT role, message
         FROM conversations
         WHERE user_id = ?
         ORDER BY id DESC
         LIMIT ?
-    """, (user_id, limit))
+        """,
+        (user_id, limit),
+    )
     rows = cur.fetchall()
     conn.close()
 
-    rows.reverse()
+    rows.reverse()  # cronológico ascendente
 
     out: List[BaseMessage] = []
     for role, msg in rows:

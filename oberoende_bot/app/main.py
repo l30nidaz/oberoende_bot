@@ -7,10 +7,12 @@ import os
 
 from oberoende_bot.app.services.memory_service import init_memory_db
 from oberoende_bot.app.services.whatsapp_service import handle_whatsapp
-from oberoende_bot.app.services.rag_service import initialize_vectorstore
+from oberoende_bot.app.services.rag_service import initialize_all_vectorstores
 from oberoende_bot.app.services.state_store_sqlite import init_state_db
 from oberoende_bot.app.services.user_profile_store_sqlite import init_user_profile_db
 from oberoende_bot.app.services.leads_store import init_leads_db
+from oberoende_bot.app.services.message_id_store import init_message_id_db   # nuevo
+from oberoende_bot.app.services.rate_limiter import init_rate_limit_db        # nuevo
 
 load_dotenv()
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -23,6 +25,7 @@ print("✅ Variables de entorno cargadas:")
 print("   - ADMIN_TOKEN:", "✅" if ADMIN_TOKEN else "❌")
 print("   - WHATSAPP_VERIFY_TOKEN:", "✅" if WHATSAPP_VERIFY_TOKEN else "❌")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 Inicializando aplicación...")
@@ -30,7 +33,9 @@ async def lifespan(app: FastAPI):
     init_user_profile_db()
     init_leads_db()
     init_memory_db()
-    initialize_vectorstore(force_rebuild=False)
+    init_message_id_db()   # deduplicación de mensajes Meta
+    init_rate_limit_db()   # rate limiting por usuario
+    initialize_all_vectorstores(force_rebuild=False)
     yield
     print("🛑 Cerrando aplicación...")
 
@@ -59,6 +64,6 @@ async def whatsapp_webhook(request: Request):
 @app.post("/admin/reindex")
 async def reindex(token: str):
     if token != ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorizedddd")
-    initialize_vectorstore(force_rebuild=False)
-    return {"status": "vectorstore rebuilt"}
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    initialize_all_vectorstores(force_rebuild=True)
+    return {"status": "all vectorstores rebuilt"}

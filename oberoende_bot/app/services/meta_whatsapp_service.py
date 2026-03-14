@@ -3,14 +3,6 @@ import requests
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-CATALOG_IMAGES = [
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo3.jpg",
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo1.jpg",
-    "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo2.png",
-]
-
-CATALOG_PDF_URL = "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo.pdf"
-
 
 def _get_config():
     token = os.getenv("WHATSAPP_TOKEN")
@@ -37,8 +29,8 @@ def send_whatsapp_text(to_number: str, body: str):
         "type": "text",
         "text": {
             "preview_url": True,
-            "body": body
-        }
+            "body": body,
+        },
     }
 
     response = requests.post(base_url, headers=_headers(), json=payload, timeout=30)
@@ -57,7 +49,7 @@ def send_whatsapp_image(to_number: str, image_url: str, caption: str | None = No
         "messaging_product": "whatsapp",
         "to": to_number,
         "type": "image",
-        "image": image_obj
+        "image": image_obj,
     }
 
     response = requests.post(base_url, headers=_headers(), json=payload, timeout=30)
@@ -69,14 +61,11 @@ def send_whatsapp_document(
     to_number: str,
     document_url: str,
     filename: str = "catalogo.pdf",
-    caption: str | None = None
+    caption: str | None = None,
 ):
     _, _, _, base_url = _get_config()
 
-    document_obj = {
-        "link": document_url,
-        "filename": filename
-    }
+    document_obj = {"link": document_url, "filename": filename}
     if caption:
         document_obj["caption"] = caption
 
@@ -84,7 +73,7 @@ def send_whatsapp_document(
         "messaging_product": "whatsapp",
         "to": to_number,
         "type": "document",
-        "document": document_obj
+        "document": document_obj,
     }
 
     response = requests.post(base_url, headers=_headers(), json=payload, timeout=30)
@@ -92,75 +81,159 @@ def send_whatsapp_document(
     return response.json()
 
 
-def send_catalog_whatsapp(to_number: str):
-    for idx, image_url in enumerate(CATALOG_IMAGES):
-        caption = "✨ Aquí tienes parte de nuestro catálogo" if idx == 0 else None
+def send_catalog_whatsapp(to_number: str, business_config: dict):
+    catalog_images = business_config.get("catalog_images", [])
+    catalog_pdf_url = business_config.get("catalog_pdf_url", "")
+    business_name = business_config.get("name", "la tienda")
+    payment_methods = ", ".join(business_config.get("payment_methods", []))
+
+    for idx, image_url in enumerate(catalog_images):
+        caption = f"✨ Aquí tienes parte del catálogo de {business_name}" if idx == 0 else None
         send_whatsapp_image(to_number, image_url, caption=caption)
 
-    send_whatsapp_document(
-        to_number,
-        CATALOG_PDF_URL,
-        filename="catalogo_oberoende.pdf",
-        caption="📄 Aquí tienes el catálogo completo en PDF"
-    )
+    if catalog_pdf_url:
+        send_whatsapp_document(
+            to_number,
+            catalog_pdf_url,
+            filename=f"catalogo_{business_name.lower().replace(' ', '_')}.pdf",
+            caption=f"📄 Aquí tienes el catálogo completo de {business_name}",
+        )
 
     cta_text = (
-        f"📄 También puedes descargar el catálogo aquí:\n{CATALOG_PDF_URL}\n\n"
+        f"📄 También puedes descargar el catálogo aquí:\n{catalog_pdf_url}\n\n"
         "✨ ¿Qué modelo te gustó?\n"
         "Envíame el nombre o una captura y te digo el precio, stock y tiempo de entrega.\n\n"
         "🚚 Hacemos envíos.\n"
-        "💳 Aceptamos Yape, Plin y transferencia."
+        f"💳 Aceptamos {payment_methods}."
     )
     send_whatsapp_text(to_number, cta_text)
 
 
-def _extract_text_message(payload: dict) -> tuple[str | None, str | None]:
+# ── Tipos de mensaje que el usuario puede mandar y que no son texto ───────────
+_MEDIA_FALLBACK_MSG = (
+    "Vi que enviaste {media_type} 📎\n"
+    "Por ahora solo puedo leer texto. Escríbeme el nombre del modelo "
+    "que te interesa y te ayudo con precio, stock y detalles. ✨"
+)
+
+_MEDIA_TYPE_LABELS = {
+    "image":    "una imagen",
+    "video":    "un video",
+    "audio":    "un audio",
+    "document": "un documento",
+    "sticker":  "un sticker",
+    "location": "una ubicación",
+    "contacts": "un contacto",
+}
+
+
+def _extract_message(payload: dict) -> tuple[str | None, str | None, str | None, str | None]:
+    """
+    Parsea el webhook de Meta y devuelve:
+        (from_number, message_body, channel_id, message_id)
+
+    - message_body es None si el tipo no es procesable como texto.
+    - Si el mensaje es de tipo multimedia, message_body toma un texto de
+      fallback para que el usuario reciba una respuesta explicativa en vez
+      de silencio.
+    - message_id se devuelve siempre que esté disponible para deduplicación.
+    """
     try:
         entry = payload["entry"][0]
         changes = entry["changes"][0]
         value = changes["value"]
 
+        metadata = value.get("metadata", {})
+        phone_number_id = metadata.get("phone_number_id")
+
         messages = value.get("messages")
         if not messages:
-            return None, None
+            return None, None, phone_number_id, None
 
         msg = messages[0]
         from_number = msg.get("from")
         msg_type = msg.get("type")
+        message_id = msg.get("id")  # ← usado para deduplicación
 
+        # Texto plano
         if msg_type == "text":
             body = msg["text"]["body"]
-            return from_number, body
+            return from_number, body, phone_number_id, message_id
 
+        # Botones / listas interactivas
         if msg_type == "interactive":
             interactive = msg.get("interactive", {})
             if interactive.get("type") == "button_reply":
-                return from_number, interactive["button_reply"]["title"]
+                return from_number, interactive["button_reply"]["title"], phone_number_id, message_id
             if interactive.get("type") == "list_reply":
-                return from_number, interactive["list_reply"]["title"]
+                return from_number, interactive["list_reply"]["title"], phone_number_id, message_id
 
-        return from_number, None
+        # Multimedia u otro tipo: responde con mensaje explicativo
+        # en vez de ignorar al usuario por completo.
+        if msg_type in _MEDIA_TYPE_LABELS:
+            label = _MEDIA_TYPE_LABELS[msg_type]
+            fallback = _MEDIA_FALLBACK_MSG.format(media_type=label)
+            return from_number, fallback, phone_number_id, message_id
+
+        # Tipo completamente desconocido → ignorar
+        return from_number, None, phone_number_id, message_id
+
     except Exception as e:
         print("⚠️ Error parseando webhook de Meta:", repr(e))
-        return None, None
+        return None, None, None, None
+
+
+# ── Constantes para mensajes de rate limit ───────────────────────────────────
+_RATE_LIMIT_MSG = (
+    "Estás enviando mensajes muy rápido 😅 "
+    "Dame un momento y escríbeme de nuevo."
+)
 
 
 async def handle_incoming_whatsapp(request: Request):
     payload = await request.json()
     print("📩 Webhook Meta recibido:", payload)
 
-    from_number, message_body = _extract_text_message(payload)
+    from oberoende_bot.app.services.message_id_store import is_duplicate
+    from oberoende_bot.app.services.rate_limiter import is_rate_limited
 
-    if not from_number or not message_body:
+    from_number, message_body, channel_id, message_id = _extract_message(payload)
+
+    # ── Descartar si no hay remitente ─────────────────────────────────────────
+    if not from_number:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+
+    # ── Punto 1: Deduplicación por message_id ─────────────────────────────────
+    if message_id and is_duplicate(message_id):
+        print(f"⚠️ Mensaje duplicado ignorado: {message_id}")
+        return JSONResponse({"status": "duplicate"}, status_code=200)
+
+    # ── Punto 3: Rate limiting por usuario ────────────────────────────────────
+    if is_rate_limited(from_number):
+        try:
+            send_whatsapp_text(from_number, _RATE_LIMIT_MSG)
+        except Exception as e:
+            print("⚠️ Error enviando aviso de rate limit:", repr(e))
+        return JSONResponse({"status": "rate_limited"}, status_code=200)
+
+    # ── Punto 2: Si no hay cuerpo de mensaje procesable, ya viene el fallback ─
+    # _extract_message ya rellenó message_body con texto explicativo para
+    # mensajes multimedia. Si sigue siendo None es un tipo completamente
+    # desconocido → ignorar silenciosamente.
+    if not message_body:
         return JSONResponse({"status": "ignored"}, status_code=200)
 
     from oberoende_bot.app.graph.graph_engine import graph
 
     result = graph.invoke({
         "user_id": from_number,
+        "channel_id": channel_id or "",
+        "conversation_id": "",
+        "business_id": "",
+        "business_config": {},
         "user_message": message_body,
         "response": "",
-        "decision": None
+        "decision": None,
     })
 
     response_text = result["response"]
