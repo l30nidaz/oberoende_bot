@@ -17,7 +17,16 @@ env/
 .venv/
 trabajo_venv/
 *.db
+obebot-key.pem
 
 # Archivos del sistema Windows
 Thumbs.db
 desktop.ini
+# Índices FAISS
+faiss_index/
+# Llave SSH - NUNCA al repo
+*.pem
+.DS_Store
+# Entornos virtuales
+venv/
+trabajo_venv/
