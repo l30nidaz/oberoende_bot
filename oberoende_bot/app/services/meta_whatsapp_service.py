@@ -1,7 +1,43 @@
+import hashlib
+import hmac
 import os
 import requests
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+
+# ── Constantes de seguridad ──────────────────────────────────────────────────
+# Máximo de caracteres que se pasan al LLM. Mensajes más largos se truncan
+# silenciosamente — el usuario recibe respuesta normal, solo se recorta el input.
+MAX_MESSAGE_LENGTH = 250
+
+
+def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None) -> bool:
+    """
+    Verifica que el webhook viene realmente de Meta usando HMAC-SHA256.
+    Meta firma cada request con tu App Secret y lo envía en el header
+    X-Hub-Signature-256 como 'sha256=<hex_digest>'.
+
+    Si WHATSAPP_APP_SECRET no está configurado, se omite la verificación
+    (útil en desarrollo local con ngrok). En producción siempre debe estar.
+    """
+    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
+    if not app_secret:
+        # Sin secret configurado → modo dev, se omite la verificación
+        return True
+
+    if not signature_header or not signature_header.startswith("sha256="):
+        print("⚠️ HMAC: header X-Hub-Signature-256 ausente o malformado")
+        return False
+
+    expected = "sha256=" + hmac.new(
+        app_secret.encode("utf-8"),
+        body_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+
+    # Comparación en tiempo constante para evitar timing attacks
+    return hmac.compare_digest(expected, signature_header)
 
 
 def _get_config():
@@ -191,7 +227,18 @@ _RATE_LIMIT_MSG = (
 
 
 async def handle_incoming_whatsapp(request: Request):
-    payload = await request.json()
+    # ── Verificación HMAC ─────────────────────────────────────────────────────
+    # Leemos el body como bytes ANTES de parsearlo como JSON para poder
+    # calcular el HMAC sobre los bytes crudos, tal como lo hace Meta.
+    body_bytes = await request.body()
+    signature = request.headers.get("X-Hub-Signature-256")
+
+    if not _verify_hmac_signature(body_bytes, signature):
+        print("🚨 HMAC inválido — request rechazado (posible ataque)")
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+
+    import json
+    payload = json.loads(body_bytes)
     print("📩 Webhook Meta recibido:", payload)
 
     from oberoende_bot.app.services.message_id_store import is_duplicate
@@ -222,6 +269,13 @@ async def handle_incoming_whatsapp(request: Request):
     # desconocido → ignorar silenciosamente.
     if not message_body:
         return JSONResponse({"status": "ignored"}, status_code=200)
+
+    # ── Límite de tamaño de mensaje ──────────────────────────────────────────
+    # Trunca mensajes excesivamente largos antes de pasarlos al LLM.
+    # Protege contra payload bombing y reduce costos de tokens.
+    if message_body and len(message_body) > MAX_MESSAGE_LENGTH:
+        print(f"⚠️ Mensaje truncado: {len(message_body)} → {MAX_MESSAGE_LENGTH} chars")
+        message_body = message_body[:MAX_MESSAGE_LENGTH]
 
     from oberoende_bot.app.graph.graph_engine import graph
 
