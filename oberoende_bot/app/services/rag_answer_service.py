@@ -55,6 +55,9 @@ def ask_rag_answer(
 
     try:
         docs = retriever.invoke(question)
+        print(f"[RAG] query='{question}' → docs encontrados: {len(docs)}")
+        for i, d in enumerate(docs):
+            print(f"[RAG] doc[{i}] preview: {d.page_content[:80]}")
     except Exception:
         return FALLBACK_MESSAGE, {"pending_followup": False}
 

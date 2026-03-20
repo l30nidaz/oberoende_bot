@@ -103,8 +103,14 @@ def decide_node(s: BotState) -> BotState:
         return s
 
     current_state = get_state(conversation_id)
+    # ── LOG DE ESTADO ─────────────────────────────────────────────────────────
+    print(f"[DECIDE] msg='{msg}'")
+    print(f"[DECIDE] last_intent={current_state.last_intent} | last_topic={current_state.last_topic} | lead_stage={current_state.lead_stage} | pending_followup={current_state.pending_followup}")
+    # ─────────────────────────────────────────────────────────────────────────
     norm = _normalize(msg)
     msg_lower = msg.lower().strip()
+
+    print('El usuario escribió:', repr(msg))
 
     # ── 1. Si hay un lead en curso, saltar TODA la lógica de keywords ────────
     # El usuario está respondiendo preguntas del lead flow (modelo, distrito,
@@ -118,35 +124,6 @@ def decide_node(s: BotState) -> BotState:
     # ── 2. Números de menú estando en follow-up pendiente ────────────────────
     if norm in {"1", "2", "3", "1️⃣", "2️⃣", "3️⃣"} and current_state.pending_followup:
         s["decision"] = "continue_followup"
-        return s
-
-    # ── 3. Keyword de producto ────────────────────────────────────────────────
-    product_keywords = [p.lower() for p in business_config.get("product_keywords", [])]
-
-    # MEJORA 2: extraemos el keyword real que disparó la detección en vez de
-    # guardar el literal "producto". Así followup_node puede decir
-    # "Sobre el precio del anillo..." en vez de "Sobre el precio de producto..."
-    matched_product = next(
-        (p for p in product_keywords if p in msg_lower), None
-    )
-
-    if matched_product:
-        resp = (
-            "¡Excelente elección! ✨\n\n"
-            "¿Qué te gustaría saber sobre ese modelo?\n\n"
-            "1️⃣ Precio\n"
-            "2️⃣ Material / detalles\n"
-            "3️⃣ Comprar\n"
-        )
-        s["response"] = resp
-        s["decision"] = "smalltalk"
-        add_ai_message(conversation_id, resp)
-        update_state(
-            conversation_id,
-            last_product=matched_product,   # ← keyword real, no "producto"
-            pending_followup=True,
-            last_intent="product_interest",
-        )
         return s
 
     # ── 4. Extracción de nombre ───────────────────────────────────────────────
@@ -198,6 +175,7 @@ def decide_node(s: BotState) -> BotState:
     # ── 6. Router LLM para todo lo demás ─────────────────────────────────────
     state_for_router = state_dict(conversation_id)
     decision = interpret_message(msg, state_for_router, business_config)
+    print(f"[ROUTER LLM] msg='{msg}' → decision='{decision}'")
     s["decision"] = decision
     return s
 
@@ -283,7 +261,11 @@ def handoff_node(s: BotState) -> BotState:
     conversation_id, business_config = _ensure_business_context(s)
     lead_q = business_config["lead_questions"]["model"]
 
-    response = f"¡Genial! ✨ Para ayudarte mejor:\n\n{lead_q}"
+    response = (
+        "¡Con gusto! 👋 Un asesor te atenderá en breve.\n\n"
+        "Mientras tanto, para agilizar tu atención:\n\n"
+        f"{lead_q}"
+    )
 
     s["response"] = response
     add_ai_message(conversation_id, response)
@@ -417,22 +399,29 @@ def router(s: BotState) -> str:
     conversation_id, _ = _ensure_business_context(s)
     decision = s.get("decision")
     st = get_state(conversation_id)
+    print(f"[ROUTER] decision={decision} | last_intent={st.last_intent} | lead_stage={st.lead_stage} | pending_followup={st.pending_followup}")
 
     if st.last_intent == "handoff" and st.pending_followup and st.lead_stage:
+        print("[ROUTER] → lead_flow")
         return "lead_flow"
 
     if decision == "continue_followup" and st.pending_followup:
+        print("[ROUTER] → smalltalk")
         return "followup"
 
     if decision == "smalltalk":
+        print("[ROUTER] → smalltalk")
         return "smalltalk"
 
     if decision == "handoff":
+        print("[ROUTER] → handoff")
         return "handoff"
 
     if decision == "catalog":
+        print("[ROUTER] → catalog")
         return "catalog"
 
+    print("[ROUTER] → rag")
     return "rag"
 
 

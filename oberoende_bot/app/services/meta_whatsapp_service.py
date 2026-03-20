@@ -239,7 +239,7 @@ async def handle_incoming_whatsapp(request: Request):
 
     import json
     payload = json.loads(body_bytes)
-    print("📩 Webhook Meta recibido:", payload)
+    #print("📩 Webhook Meta recibido:", payload)
 
     from oberoende_bot.app.services.message_id_store import is_duplicate
     from oberoende_bot.app.services.rate_limiter import is_rate_limited

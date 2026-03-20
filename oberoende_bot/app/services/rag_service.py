@@ -23,11 +23,15 @@ def load_documents(documents_path: str):
 
         if file.endswith(".docx"):
             loader = Docx2txtLoader(filepath)
+            print(f"📄 Cargando documento docx: {file}")
         elif file.endswith(".pdf"):
             loader = PyPDFLoader(filepath)
+            print(f"📄 Cargando documento pdf: {file}")
         elif file.endswith(".txt"):
             loader = TextLoader(filepath, encoding="utf-8")
+            print(f"📄 Cargando documento txt: {file}")
         else:
+            print(f"⚠️ Archivo no soportado: {file}")
             continue
 
         print(f"📄 Loader: {loader}")
@@ -72,7 +76,7 @@ def initialize_vectorstore_for_business(
             vectorstore_instances[business_id] = vs
         return vs
 
-    if os.path.exists(vectorstore_path):
+    if os.path.exists(os.path.join(vectorstore_path, "index.faiss")):
         print(f"🔄 Cargando vectorstore de {business_id} desde disco...")
         vs = FAISS.load_local(
             vectorstore_path,

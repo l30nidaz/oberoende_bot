@@ -18,13 +18,13 @@ from oberoende_bot.app.routers.admin_router import router as admin_router
 load_dotenv()
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
-print("✅ .env cargado desde:", ENV_PATH)
+#print("✅ .env cargado desde:", ENV_PATH)
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN")
-print("✅ Variables de entorno cargadas:")
-print("   - ADMIN_TOKEN:", "✅" if ADMIN_TOKEN else "❌")
-print("   - WHATSAPP_VERIFY_TOKEN:", "✅" if WHATSAPP_VERIFY_TOKEN else "❌")
+#print("✅ Variables de entorno cargadas:")
+#print("   - ADMIN_TOKEN:", "✅" if ADMIN_TOKEN else "❌")
+#print("   - WHATSAPP_VERIFY_TOKEN:", "✅" if WHATSAPP_VERIFY_TOKEN else "❌")
 
 
 @asynccontextmanager

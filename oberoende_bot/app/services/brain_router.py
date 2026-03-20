@@ -52,6 +52,9 @@ def interpret_message(
             "- 'quiero comprar' => handoff\n"
             "- 'quiero hablar con asesor' => handoff\n"
             "- 'cuánto cuesta' => faq_rag\n\n"
+            "- 'qué precio tiene el anillo' => faq_rag\n"    # ← agregar
+            "- 'anillo de plata 925' => faq_rag\n"            # ← agregar
+            "- 'quiero el anillo de plata' => handoff\n"      # ← agregar
             "Responde SOLO con la etiqueta.\n"
             "Usa el estado para interpretar mensajes cortos como 'ok'.",
         ),
