@@ -40,6 +40,44 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "lead_email_subject": "Nuevo lead (joyería) - Soldeoro",
     },
 
+    "difios": {
+        "business_id": "difios",
+        "name": "Difios",
+        "app_name": "Oberoende",
+        "emoji": "💍",
+        "industry": "joyería",
+        "assistant_role": "Eres un asistente profesional de una joyería.",
+        "router_role": "Eres un router de conversación para una joyería.",
+        "menu_title": "¡Hola! 👋 Bienvenido a Difios 💍",
+        "menu_options": [
+            "1️⃣ Ver catálogo",
+            "2️⃣ Saber precios",
+            "3️⃣ Comprar un modelo",
+            "4️⃣ Hablar con asesor",
+        ],
+        "product_keywords": ["anillo", "collar", "arete", "pulsera", "cadena", "dije", "aro"],
+        "product_examples": "anillos, collares, pulseras o aretes",
+        "payment_methods": ["Yape", "Plin", "transferencia"],
+        "lead_questions": {
+            "model": "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre o enviar foto)",
+            "district": "Perfecto 👍 ¿En qué distrito estás?",
+            "payment": "Gracias ✅ ¿Cómo prefieres pagar: Yape, Plin o transferencia?"
+        },
+        "catalog_images": [
+            "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo3.jpg",
+            "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo1.jpg",
+            "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo2.png",
+        ],
+        "catalog_pdf_url": "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo.pdf",
+        "documents_path": "oberoende_bot/app/data/businesses/soldeoro/documentos",
+        "vectorstore_path": "oberoende_bot/app/data/businesses/soldeoro/vectorstore",
+        "channel_ids": [
+            os.getenv("SOLDEORO_META_PHONE_NUMBER_ID", "").strip(),
+            os.getenv("SOLDEORO_TWILIO_NUMBER", "").strip(),
+        ],
+        "lead_email_subject": "Nuevo lead (joyería) - Soldeoro",
+    },
+
     "casa_hogar": {
         "business_id": "casa_hogar",
         "name": "Casa Hogar",

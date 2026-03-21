@@ -281,6 +281,43 @@ def handoff_node(s: BotState) -> BotState:
     )
     return s
 
+# ── Añadir esta función helper cerca de _normalize ────────────────────────
+def _is_lead_response(msg: str, stage: str, business_config: dict) -> bool:
+    """
+    Pregunta al LLM si el mensaje del usuario es una respuesta genuina
+    a la pregunta del lead (modelo/distrito/pago) o es una pregunta/desvío.
+    Devuelve True si ES una respuesta al lead, False si es una pregunta.
+    
+    Esto evita que "cómo se llama el negocio?" avance el lead_stage.
+    """
+    from langchain_openai import ChatOpenAI
+    import os
+
+    stage_labels = {
+        "await_model":    "qué modelo le interesa comprar",
+        "await_district": "en qué distrito vive",
+        "await_payment":  "cómo prefiere pagar",
+    }
+    expected = stage_labels.get(stage, "una pregunta del proceso de compra")
+
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        api_key=os.getenv("OPENAI_API_KEY")
+    )
+
+    prompt = (
+        f"Estás en un chatbot de ventas. Se le preguntó al usuario: '{expected}'.\n"
+        f"El usuario respondió: '{msg}'\n\n"
+        "¿Es esto una respuesta directa a la pregunta (nombre de producto, "
+        "lugar, método de pago, etc.) o es una pregunta/comentario diferente?\n"
+        "Responde SOLO con: RESPUESTA o PREGUNTA"
+    )
+
+    result = llm.invoke(prompt).content.strip().upper()
+    print(f"[LEAD_GATE] stage={stage} msg='{msg}' → {result}")
+    return result == "RESPUESTA"
+
 
 def lead_flow_node(s: BotState) -> BotState:
     user_phone = s["user_id"]
@@ -311,6 +348,24 @@ def lead_flow_node(s: BotState) -> BotState:
         )
         return s
 
+    # ── Gate semántico: ¿el mensaje es realmente una respuesta al lead? ───────
+    # Si el usuario pregunta algo fuera de contexto ("cómo se llama el negocio",
+    # "cuánto cuesta X") en vez de responder la pregunta del lead, lo atendemos
+    # sin avanzar el lead_stage. El flujo queda intacto para que lo retome.
+    if not _is_lead_response(msg, stage, business_config):
+        answer, _ = ask_rag_answer(msg, conversation_id, business_config)
+        # Añadir un recordatorio de en qué estábamos
+        stage_reminders = {
+            "await_model":    business_config["lead_questions"]["model"],
+            "await_district": business_config["lead_questions"]["district"],
+            "await_payment":  business_config["lead_questions"]["payment"],
+        }
+        reminder = stage_reminders.get(stage, "")
+        resp = f"{answer}\n\n---\n📋 Cuando quieras continuar con tu pedido:\n{reminder}"
+        s["response"] = answer
+        add_ai_message(conversation_id, resp)
+        return s
+    
     # ── Etapa 1: recibir modelo ───────────────────────────────────────────────
     if stage == "await_model":
         update_state(conversation_id, lead_model=msg, lead_stage="await_district")
