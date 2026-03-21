@@ -69,13 +69,13 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
             "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo2.png",
         ],
         "catalog_pdf_url": "https://catalogo-oberoende-s3.s3.us-east-1.amazonaws.com/catalogo.pdf",
-        "documents_path": "oberoende_bot/app/data/businesses/soldeoro/documentos",
-        "vectorstore_path": "oberoende_bot/app/data/businesses/soldeoro/vectorstore",
+        "documents_path": "oberoende_bot/app/data/businesses/difios/documentos",
+        "vectorstore_path": "oberoende_bot/app/data/businesses/difios/vectorstore",
         "channel_ids": [
-            os.getenv("SOLDEORO_META_PHONE_NUMBER_ID", "").strip(),
-            os.getenv("SOLDEORO_TWILIO_NUMBER", "").strip(),
+            os.getenv("DIFIOS_META_PHONE_NUMBER_ID", "").strip(),
+            os.getenv("DIFIOS_TWILIO_NUMBER", "").strip(),
         ],
-        "lead_email_subject": "Nuevo lead (joyería) - Soldeoro",
+        "lead_email_subject": "Nuevo lead (joyería) - Difios",
     },
 
     "casa_hogar": {
