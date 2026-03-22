@@ -96,7 +96,9 @@ def decide_node(s: BotState) -> BotState:
     # vuelve 2 días después no queda atascado en un lead flow que ya olvidó.
     session_expired = reset_if_expired(conversation_id)
     if session_expired:
-        resp = sales_menu(business_config)
+        from oberoende_bot.app.services.user_profile_store_sqlite import get_name
+        name = get_name(conversation_id)  # ← busca el nombre guardado
+        resp = sales_menu(business_config, name)  # ← menú de bienvenida con nombre si lo hay
         s["response"] = resp
         s["decision"] = "smalltalk"
         add_ai_message(conversation_id, resp)
