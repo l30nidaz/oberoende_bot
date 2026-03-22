@@ -13,7 +13,10 @@ def extract_name(text: str) -> Optional[str]:
     for p in _PATTERNS:
         m = re.search(p, t, flags=re.IGNORECASE)
         if m:
+            print("[NameExtractor] Matched pattern:", p)
             name = m.group(1).strip()
             # Normaliza: "julio" -> "Julio"
             return name[:1].upper() + name[1:].lower()
+        else:
+            print("[NameExtractor] Sorry but the message '", t, "' doesn't match pattern:", p)
     return None
