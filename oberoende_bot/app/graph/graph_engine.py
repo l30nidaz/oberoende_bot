@@ -255,7 +255,11 @@ def smalltalk_node(s: BotState) -> BotState:
 
     s["response"] = resp
     add_ai_message(conversation_id, resp)
-    update_state(conversation_id, last_intent="smalltalk")
+    update_state(
+        conversation_id,
+        last_intent="smalltalk",
+        pending_followup=False,  #delete de pending follow to avoid the last conversation when user request to catalog
+    )
     return s
 
 
