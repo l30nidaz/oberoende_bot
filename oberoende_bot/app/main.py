@@ -15,6 +15,7 @@ from oberoende_bot.app.services.message_id_store import init_message_id_db   # n
 from oberoende_bot.app.services.rate_limiter import init_rate_limit_db        # nuevo
 from oberoende_bot.app.routers.admin_router import router as admin_router
 
+os.environ["LANGCHAIN_TRACING"] = "true"
 load_dotenv()
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
