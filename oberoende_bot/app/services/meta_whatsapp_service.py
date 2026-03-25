@@ -279,7 +279,8 @@ async def handle_incoming_whatsapp(request: Request):
 
     from oberoende_bot.app.graph.graph_engine import graph
 
-    result = graph.invoke({
+    result = graph.invoke(
+    {
         "user_id": from_number,
         "channel_id": channel_id or "",
         "conversation_id": "",
@@ -288,8 +289,13 @@ async def handle_incoming_whatsapp(request: Request):
         "user_message": message_body,
         "response": "",
         "decision": None,
-    })
-
+    },
+    config={
+        "metadata": {
+            "conversation_id": from_number,
+        }
+    }
+    )
     response_text = result["response"]
 
     try:
