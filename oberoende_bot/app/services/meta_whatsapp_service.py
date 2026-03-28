@@ -144,6 +144,28 @@ def send_catalog_whatsapp(to_number: str, business_config: dict):
     )
     send_whatsapp_text(to_number, cta_text)
 
+def send_typing_indicator(to_number: str, phone_number_id: str, message_id: str) -> None:
+    """
+    Muestra los 3 puntitos 'escribiendo...' en el chat del usuario.
+    También marca el mensaje como leído (doble check azul).
+    El indicador dura hasta 25 segundos o hasta que el bot responda.
+    """
+    token, _, _, _ = _get_config()
+    url = f"https://graph.facebook.com/v25.0/{phone_number_id}/messages"
+    payload = {
+        "messaging_product": "whatsapp",
+        "status": "read",
+        "message_id": message_id,
+        "typing_indicator": {
+            "type": "text"
+        }
+    }
+    try:
+        resp = requests.post(url, headers=_headers(), json=payload, timeout=5)
+        if resp.status_code != 200:
+            print(f"⚠️ Typing indicator falló: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"⚠️ Error enviando typing indicator: {repr(e)}")
 
 # ── Tipos de mensaje que el usuario puede mandar y que no son texto ───────────
 _MEDIA_FALLBACK_MSG = (
@@ -276,6 +298,12 @@ async def handle_incoming_whatsapp(request: Request):
     if message_body and len(message_body) > MAX_MESSAGE_LENGTH:
         print(f"⚠️ Mensaje truncado: {len(message_body)} → {MAX_MESSAGE_LENGTH} chars")
         message_body = message_body[:MAX_MESSAGE_LENGTH]
+
+    # ── Typing indicator ─────────────────────────────────────────────────────
+    # Se llama ANTES del grafo para que los puntitos aparezcan mientras
+    # el LLM procesa. message_id ya viene de _extract_message().
+    if message_id and channel_id:
+        send_typing_indicator(from_number, channel_id, message_id)
 
     from oberoende_bot.app.graph.graph_engine import graph
 
