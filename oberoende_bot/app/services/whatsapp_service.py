@@ -34,8 +34,17 @@ def send_whatsapp_document(
         from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_document as impl
     return impl(to_number, document_url, filename, caption)
 
+
+def send_catalog_whatsapp(to_number: str, business_config: dict):
+    provider = get_whatsapp_provider()
+    if provider == "twilio":
+        from oberoende_bot.app.services.twilio_whatsapp_service import send_catalog_whatsapp as impl
+    else:
+        from oberoende_bot.app.services.meta_whatsapp_service import send_catalog_whatsapp as impl
+    return impl(to_number, business_config)
+
+
 def send_whatsapp_buttons(to_number: str, body: str, buttons: list[str]):
-#def send_catalog_whatsapp(to_number: str, business_config: dict):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_whatsapp_text as impl
@@ -46,15 +55,8 @@ def send_whatsapp_buttons(to_number: str, body: str, buttons: list[str]):
         from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_buttons as impl
     return impl(to_number, body, buttons)
 
-    provider = get_whatsapp_provider()
-    if provider == "twilio":
-        from oberoende_bot.app.services.twilio_whatsapp_service import send_catalog_whatsapp as impl
-    else:
-        from oberoende_bot.app.services.meta_whatsapp_service import send_catalog_whatsapp as impl
-    return impl(to_number, business_config)
 
 
-async def handle_whatsapp(request: Request):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import handle_incoming_whatsapp as impl
