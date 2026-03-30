@@ -123,7 +123,36 @@ def decide_node(s: BotState) -> BotState:
         s["decision"] = None  # router() lo enviará a lead_flow
         return s
 
-    # ── 2. Números de menú estando en follow-up pendiente ────────────────────
+    # ── 2. Keyword de producto (ANTES del check numérico de followup) ────────
+    # Si el usuario menciona un producto concreto, siempre mostramos el submenú
+    # precio/material/comprar, aunque haya pending_followup=True de otro contexto.
+    # Esto evita que "El collar" caiga al LLM y sea clasificado como continue_followup.
+    # EXCEPCIÓN: si hay lead en curso (paso 1), ya retornamos antes de llegar aquí.
+    product_keywords = [p.lower() for p in business_config.get("product_keywords", [])]
+    matched_product = next(
+        (p for p in product_keywords if p in msg_lower), None
+    )
+    if matched_product:
+        resp = (
+            "¡Excelente elección! ✨\n\n"
+            "¿Qué te gustaría saber sobre ese modelo?\n\n"
+            "1️⃣ Precio\n"
+            "2️⃣ Material / detalles\n"
+            "3️⃣ Comprar\n"
+        )
+        s["response"] = resp
+        s["decision"] = "smalltalk"
+        add_ai_message(conversation_id, resp)
+        update_state(
+            conversation_id,
+            last_product=matched_product,
+            pending_followup=True,
+            last_intent="product_interest",
+        )
+        return s
+
+    # ── 3. Números de menú estando en follow-up pendiente ────────────────────
+    # Va DESPUÉS de product_keywords para que "collar" no sea confundido.
     if norm in {"1", "2", "3", "1️⃣", "2️⃣", "3️⃣"} and current_state.pending_followup:
         s["decision"] = "continue_followup"
         return s
@@ -219,8 +248,16 @@ def followup_node(s: BotState) -> BotState:
         )
 
     else:
-        resp = smalltalk_answer(conversation_id, msg, s["business_config"])
-        update_state(conversation_id, pending_followup=False)
+        # Texto libre que no es 1/2/3 — recordar las opciones sin romper el flujo.
+        # No llamar a smalltalk_answer porque devuelve el menú de bienvenida.
+        prod_label = prod if prod != "el producto" else "ese modelo"
+        resp = (
+            f"Para ayudarte con {prod_label}, elige una opción:\n\n"
+            "1️⃣ Precio\n"
+            "2️⃣ Material / detalles\n"
+            "3️⃣ Comprar\n"
+        )
+        update_state(conversation_id, pending_followup=True)
 
     s["response"] = resp
     add_ai_message(conversation_id, resp)

@@ -17,6 +17,4 @@ def extract_name(text: str) -> Optional[str]:
             name = m.group(1).strip()
             # Normaliza: "julio" -> "Julio"
             return name[:1].upper() + name[1:].lower()
-        else:
-            print("[NameExtractor] Sorry but the message '", t, "' doesn't match pattern:", p)
     return None
