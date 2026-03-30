@@ -70,7 +70,7 @@ def catalog_node(s: BotState) -> BotState:
         response_text = (
             "No pude enviar el catálogo en este momento 😥\n"
             f"Pero aquí tienes el PDF:\n{pdf_url}\n\n"
-            "✨ Envíame el nombre o una captura del modelo que te gustó y te ayudo con el precio."
+            "✨ Escríbeme el nombre del modelo que te gustó y te ayudo con el precio."
         )
         update_state(
             conversation_id,
@@ -133,14 +133,24 @@ def decide_node(s: BotState) -> BotState:
         (p for p in product_keywords if p in msg_lower), None
     )
     if matched_product:
-        resp = (
-            "¡Excelente elección! ✨\n\n"
-            "¿Qué te gustaría saber sobre ese modelo?\n\n"
-            "1️⃣ Precio\n"
-            "2️⃣ Material / detalles\n"
-            "3️⃣ Comprar\n"
-        )
-        s["response"] = resp
+        body_text = "¡Excelente elección! ✨\n¿Qué te gustaría saber sobre ese modelo?"
+        buttons = ["Precio", "Material / detalles", "Comprar"]
+
+        try:
+            from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
+            send_whatsapp_buttons(s["user_id"], body_text, buttons)
+            resp = body_text  # solo para memoria/log
+        except Exception:
+            # fallback a texto si los botones fallan (ej: Twilio no los soporta)
+            resp = (
+                "¡Excelente elección! ✨\n\n"
+                "¿Qué te gustaría saber sobre ese modelo?\n\n"
+                "1️⃣ Precio\n"
+                "2️⃣ Material / detalles\n"
+                "3️⃣ Comprar\n"
+            )
+
+        s["response"] = ""  # ya enviado directamente, no reenviar en el webhook
         s["decision"] = "smalltalk"
         add_ai_message(conversation_id, resp)
         update_state(
@@ -182,7 +192,7 @@ def decide_node(s: BotState) -> BotState:
                 "¡Claro! ✨\n"
                 f"Dime qué {business_config['product_examples']} te interesa "
                 "y te ayudo con el precio.\n\n"
-                "Puedes escribir el nombre del modelo o enviarme una foto/captura."
+                "Puedes escribir el nombre del modelo."
             )
             s["response"] = resp
             s["decision"] = "smalltalk"
@@ -222,8 +232,8 @@ def followup_node(s: BotState) -> BotState:
     if choice == "1":
         resp = (
             f"Claro ✨ Sobre el precio de {prod}:\n"
-            "envíame el nombre exacto del modelo o una foto/captura del catálogo "
-            "y te digo el precio exacto."
+            "escríbeme el nombre exacto del modelo y te digo el precio."
+										 
         )
         update_state(conversation_id, pending_followup=False, last_topic="precio")
 
@@ -248,16 +258,27 @@ def followup_node(s: BotState) -> BotState:
         )
 
     else:
-        # Texto libre que no es 1/2/3 — recordar las opciones sin romper el flujo.
-        # No llamar a smalltalk_answer porque devuelve el menú de bienvenida.
+        # Texto libre — reenviar botones de opciones sin romper el flujo
+																			  
         prod_label = prod if prod != "el producto" else "ese modelo"
-        resp = (
-            f"Para ayudarte con {prod_label}, elige una opción:\n\n"
-            "1️⃣ Precio\n"
-            "2️⃣ Material / detalles\n"
-            "3️⃣ Comprar\n"
-        )
+        body_text = f"Para ayudarte con {prod_label}, elige una opción:"
+        buttons = ["Precio", "Material / detalles", "Comprar"]
+        try:
+            from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
+            send_whatsapp_buttons(s["user_id"], body_text, buttons)
+            resp = body_text
+            s["response"] = ""
+        except Exception:
+            resp = (
+                f"Para ayudarte con {prod_label}, elige una opción:\n\n"
+                "1️⃣ Precio\n"
+                "2️⃣ Material / detalles\n"
+                "3️⃣ Comprar\n"
+            )
+            s["response"] = resp
         update_state(conversation_id, pending_followup=True)
+        add_ai_message(conversation_id, resp)
+        return s
 
     s["response"] = resp
     add_ai_message(conversation_id, resp)

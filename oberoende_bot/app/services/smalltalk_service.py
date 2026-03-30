@@ -61,7 +61,7 @@ def smalltalk_answer(conversation_id: str, user_message: str, business_config: d
         return (
             "¡Claro! ✨\n"
             f"Dime qué {business_config['product_examples']} te interesa y te ayudo con el precio.\n\n"
-            "Puedes escribir el nombre del modelo o enviarme una foto/captura."
+            "Puedes escribir el nombre del modelo"
         )
 
     if norm in _THANKS:

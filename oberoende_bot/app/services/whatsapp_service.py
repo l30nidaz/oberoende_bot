@@ -34,8 +34,18 @@ def send_whatsapp_document(
         from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_document as impl
     return impl(to_number, document_url, filename, caption)
 
+def send_whatsapp_buttons(to_number: str, body: str, buttons: list[str]):
+#def send_catalog_whatsapp(to_number: str, business_config: dict):
+    provider = get_whatsapp_provider()
+    if provider == "twilio":
+        from oberoende_bot.app.services.twilio_whatsapp_service import send_whatsapp_text as impl
+        # Twilio no soporta botones interactivos nativos — fallback a texto
+        options = "\n".join(f"{i+1}️⃣ {b}" for i, b in enumerate(buttons))
+        return impl(to_number, f"{body}\n\n{options}")
+    else:
+        from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_buttons as impl
+    return impl(to_number, body, buttons)
 
-def send_catalog_whatsapp(to_number: str, business_config: dict):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_catalog_whatsapp as impl

@@ -118,6 +118,41 @@ def send_whatsapp_document(
 
 
 def send_catalog_whatsapp(to_number: str, business_config: dict):
+    """
+    Envía un mensaje interactivo con botones de respuesta rápida (máx. 3).
+    Cuando el usuario toca un botón, WhatsApp envía su título como mensaje de texto,
+    que el bot recibe igual que cualquier otro mensaje.
+    """
+    _, _, _, base_url = _get_config()
+
+    if len(buttons) > 3:
+        buttons = buttons[:3]
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_number,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body},
+            "action": {
+                "buttons": [
+                    {
+                        "type": "reply",
+                        "reply": {
+                            "id": f"btn_{i}",
+                            "title": btn[:20],  # API limit: 20 chars
+                        },
+                    }
+                    for i, btn in enumerate(buttons)
+                ]
+            },
+        },
+    }
+
+    response = requests.post(base_url, headers=_headers(), json=payload, timeout=30)
+    response.raise_for_status()
+    return response.json()
     catalog_images = business_config.get("catalog_images", [])
     catalog_pdf_url = business_config.get("catalog_pdf_url", "")
     business_name = business_config.get("name", "la tienda")
@@ -138,7 +173,7 @@ def send_catalog_whatsapp(to_number: str, business_config: dict):
     cta_text = (
         f"📄 También puedes descargar el catálogo aquí:\n{catalog_pdf_url}\n\n"
         "✨ ¿Qué modelo te gustó?\n"
-        "Envíame el nombre o una captura y te digo el precio, stock y tiempo de entrega.\n\n"
+        "Escríbeme el nombre y te digo el precio, stock y tiempo de entrega.\n\n"
         "🚚 Hacemos envíos.\n"
         f"💳 Aceptamos {payment_methods}."
     )

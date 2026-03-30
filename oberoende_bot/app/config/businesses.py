@@ -21,7 +21,7 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "product_examples": "anillos, collares, pulseras o aretes",
         "payment_methods": ["Yape", "Plin", "transferencia"],
         "lead_questions": {
-            "model": "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre o enviar foto)",
+            "model": "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre)",
             "district": "Perfecto 👍 ¿En qué distrito estás?",
             "payment": "Gracias ✅ ¿Cómo prefieres pagar: Yape, Plin o transferencia?"
         },
@@ -59,7 +59,7 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "product_examples": "anillos, collares, pulseras o aretes",
         "payment_methods": ["Yape", "Plin", "transferencia"],
         "lead_questions": {
-            "model": "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre o enviar foto)",
+            "model": "1️⃣ ¿Qué modelo te interesa? (puedes escribir el nombre)",
             "district": "Perfecto 👍 ¿En qué distrito estás?",
             "payment": "Gracias ✅ ¿Cómo prefieres pagar: Yape, Plin o transferencia?"
         },
@@ -100,7 +100,7 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "product_examples": "sábanas, cobertores, frazadas, edredones o toallas",
         "payment_methods": ["Yape", "Plin", "transferencia"],
         "lead_questions": {
-            "model": "1️⃣ ¿Qué producto te interesa? (puedes escribir el nombre o enviar foto)",
+            "model": "1️⃣ ¿Qué producto te interesa? (puedes escribir el nombre)",
             "district": "Perfecto 👍 ¿A qué distrito sería el envío?",
             "payment": "Gracias ✅ ¿Cómo prefieres pagar?"
         },

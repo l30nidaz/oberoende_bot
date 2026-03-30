@@ -79,7 +79,7 @@ def send_catalog_whatsapp(to_number: str, business_config: dict):
     cta_text = (
         f"📄 También puedes descargar el catálogo aquí:\n{catalog_pdf_url}\n\n"
         "✨ ¿Qué modelo te gustó?\n"
-        "Envíame el nombre o una captura y te digo el precio, stock y tiempo de entrega.\n\n"
+        "Envíame el nombre y te digo el precio, stock y tiempo de entrega.\n\n"
         "🚚 Hacemos envíos.\n"
         f"💳 Aceptamos {payment_methods}."
     )
