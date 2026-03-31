@@ -140,7 +140,8 @@ def decide_node(s: BotState) -> BotState:
             from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
             send_whatsapp_buttons(s["user_id"], body_text, buttons)
             resp = body_text  # solo para memoria/log
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ Botones fallaron: {repr(e)}") 
             # fallback a texto si los botones fallan (ej: Twilio no los soporta)
             resp = (
                 "¡Excelente elección! ✨\n\n"
