@@ -139,10 +139,9 @@ def decide_node(s: BotState) -> BotState:
         try:
             from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
             send_whatsapp_buttons(s["user_id"], body_text, buttons)
-            resp = body_text  # solo para memoria/log
+            resp = body_text
         except Exception as e:
-            print(f"⚠️ Botones fallaron: {repr(e)}") 
-            # fallback a texto si los botones fallan (ej: Twilio no los soporta)
+            print(f"⚠️ Botones fallaron: {repr(e)}")
             resp = (
                 "¡Excelente elección! ✨\n\n"
                 "¿Qué te gustaría saber sobre ese modelo?\n\n"
@@ -151,8 +150,8 @@ def decide_node(s: BotState) -> BotState:
                 "3️⃣ Comprar\n"
             )
 
-        s["response"] = ""  # ya enviado directamente, no reenviar en el webhook
-        s["decision"] = "smalltalk"
+        s["response"] = resp
+        s["decision"] = "product_buttons"
         add_ai_message(conversation_id, resp)
         update_state(
             conversation_id,
@@ -234,7 +233,6 @@ def followup_node(s: BotState) -> BotState:
         resp = (
             f"Claro ✨ Sobre el precio de {prod}:\n"
             "escríbeme el nombre exacto del modelo y te digo el precio."
-										 
         )
         update_state(conversation_id, pending_followup=False, last_topic="precio")
 
@@ -260,7 +258,6 @@ def followup_node(s: BotState) -> BotState:
 
     else:
         # Texto libre — reenviar botones de opciones sin romper el flujo
-																			  
         prod_label = prod if prod != "el producto" else "ese modelo"
         body_text = f"Para ayudarte con {prod_label}, elige una opción:"
         buttons = ["Precio", "Material / detalles", "Comprar"]
@@ -515,7 +512,15 @@ def lead_flow_node(s: BotState) -> BotState:
     return s
 
 
-def router(s: BotState) -> str:
+def product_node(s: BotState) -> BotState:
+    # Los botones ya fueron enviados directamente desde decide_node.
+    # Este nodo existe solo para que el grafo tenga un destino válido
+    # y el webhook NO reenvíe s["response"] como texto duplicado.
+    s["response"] = ""
+    return s
+
+
+
     conversation_id, _ = _ensure_business_context(s)
     decision = s.get("decision")
     st = get_state(conversation_id)
@@ -528,6 +533,10 @@ def router(s: BotState) -> str:
     if decision == "continue_followup" and st.pending_followup:
         print("[ROUTER] → smalltalk")
         return "followup"
+
+    if decision == "product_buttons":
+        print("[ROUTER] → product")
+        return "product"
 
     if decision == "smalltalk":
         print("[ROUTER] → smalltalk")
@@ -548,6 +557,7 @@ def router(s: BotState) -> str:
 def build_graph():
     g = StateGraph(BotState)
     g.add_node("decide", decide_node)
+    g.add_node("product", product_node)
     g.add_node("followup", followup_node)
     g.add_node("rag", rag_node)
     g.add_node("smalltalk", smalltalk_node)
@@ -559,6 +569,7 @@ def build_graph():
 
     g.add_conditional_edges("decide", router, {
         "lead_flow": "lead_flow",
+        "product": "product",
         "followup": "followup",
         "rag": "rag",
         "smalltalk": "smalltalk",
@@ -566,6 +577,7 @@ def build_graph():
         "catalog": "catalog",
     })
 
+    g.add_edge("product", END)
     g.add_edge("followup", END)
     g.add_edge("rag", END)
     g.add_edge("smalltalk", END)
