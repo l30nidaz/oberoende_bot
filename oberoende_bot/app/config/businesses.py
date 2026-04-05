@@ -164,6 +164,9 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         os.getenv("OBEROENDE_META_PHONE_NUMBER_ID", "").strip(),
     ],
     "lead_email_subject": "Nuevo lead - Oberoende",
+    "whatsapp_app_secret": os.getenv("OBEROENDE_APP_SECRET", "").strip(),
+    "whatsapp_token": os.getenv("OBEROENDE_WHATSAPP_TOKEN", "").strip(),
+    "whatsapp_phone_number_id": os.getenv("OBEROENDE_META_PHONE_NUMBER_ID", "").strip(),
 },
 
     # ─────────────────────────────────────────────────────────────────────────

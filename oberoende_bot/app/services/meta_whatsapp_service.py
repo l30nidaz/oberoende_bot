@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 MAX_MESSAGE_LENGTH = 250
 
 
-def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None) -> bool:
+def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_secret: str) -> bool:
     """
     Verifica que el webhook viene realmente de Meta usando HMAC-SHA256.
     Meta firma cada request con tu App Secret y lo envía en el header
@@ -21,7 +21,7 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None) -> b
     Si WHATSAPP_APP_SECRET no está configurado, se omite la verificación
     (útil en desarrollo local con ngrok). En producción siempre debe estar.
     """
-    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
+
     if not app_secret:
         # Sin secret configurado → modo dev, se omite la verificación
         return True
@@ -269,15 +269,33 @@ async def handle_incoming_whatsapp(request: Request):
     # Leemos el body como bytes ANTES de parsearlo como JSON para poder
     # calcular el HMAC sobre los bytes crudos, tal como lo hace Meta.
     body_bytes = await request.body()
-    signature = request.headers.get("X-Hub-Signature-256")
 
-    if not _verify_hmac_signature(body_bytes, signature):
-        print("🚨 HMAC inválido — request rechazado (posible ataque)")
-        return JSONResponse({"status": "forbidden"}, status_code=403)
-
+    
+    # 1. Parsear payload primero
     import json
-    payload = json.loads(body_bytes)
-    #print("📩 Webhook Meta recibido:", payload)
+    try:
+        payload = json.loads(body_bytes)
+    except Exception:
+        return JSONResponse({"status": "ignored"}, status_code=200)
+    
+    # 2. Extraer phone_number_id para identificar el negocio
+    try:
+        phone_number_id = payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
+    except Exception:
+        phone_number_id = None
+    
+    # 3. Resolver negocio por channel_id
+    from oberoende_bot.app.config.businesses import resolve_business_by_channel
+    business_config = resolve_business_by_channel(phone_number_id)
+    
+    # 4. Verificar HMAC con el secret del negocio correspondiente
+    app_secret = business_config.get("whatsapp_app_secret", "").strip()
+    signature = request.headers.get("X-Hub-Signature-256")
+    
+    if app_secret and not _verify_hmac_signature(body_bytes, signature, app_secret):
+        print(f"🚨 HMAC inválido para negocio {business_config['business_id']}")
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+    
 
     from oberoende_bot.app.services.message_id_store import is_duplicate
     from oberoende_bot.app.services.rate_limiter import is_rate_limited
