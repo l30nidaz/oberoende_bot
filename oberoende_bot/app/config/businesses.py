@@ -133,6 +133,38 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
             ),
         },
     },
+    "oberoende": {
+    "business_id": "oberoende",
+    "name": "Oberoende",
+    "app_name": "Oberoende",
+    "emoji": "🤖",
+    "industry": "software de chatbots",
+    "assistant_role": "Eres un asistente profesional de Oberoende, una plataforma de chatbots para WhatsApp.",
+    "router_role": "Eres un router de conversación para una empresa de software.",
+    "menu_title": "¡Hola! 👋 Bienvenido a Oberoende 🤖",
+    "menu_options": [
+        "1️⃣ ¿Qué es Oberoende?",
+        "2️⃣ Ver planes y precios",
+        "3️⃣ Quiero una demo",
+        "4️⃣ Hablar con un asesor",
+    ],
+    "product_keywords": ["chatbot", "bot", "whatsapp", "automatización", "plan"],
+    "product_examples": "chatbots, planes o integraciones",
+    "payment_methods": ["Yape", "Plin", "transferencia"],
+    "lead_questions": {
+        "model": "1️⃣ ¿Para qué tipo de negocio quieres el chatbot?",
+        "district": "Perfecto 👍 ¿En qué ciudad o país estás?",
+        "payment": "Gracias ✅ ¿Cómo prefieres coordinar el pago?"
+    },
+    "catalog_images": [],
+    "catalog_pdf_url": "",
+    "documents_path": "oberoende_bot/app/data/businesses/oberoende/documentos",
+    "vectorstore_path": "oberoende_bot/app/data/businesses/oberoende/vectorstore",
+    "channel_ids": [
+        os.getenv("OBEROENDE_META_PHONE_NUMBER_ID", "").strip(),
+    ],
+    "lead_email_subject": "Nuevo lead - Oberoende",
+},
 
     # ─────────────────────────────────────────────────────────────────────────
     # AGREGA AQUÍ TUS CLIENTES REALES
