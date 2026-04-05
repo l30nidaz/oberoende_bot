@@ -1,29 +1,38 @@
+# obebot/app/graph/graph_engine.py
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional, Any
 import re
 
-from oberoende_bot.app.config.businesses import resolve_business_by_channel
-from oberoende_bot.app.services.brain_router import interpret_message
-from oberoende_bot.app.services.smalltalk_service import smalltalk_answer, sales_menu
-from oberoende_bot.app.services.rag_answer_service import ask_rag_answer
-from oberoende_bot.app.services.memory_service import add_user_message, add_ai_message
-from oberoende_bot.app.services.state_store_sqlite import (
+from obebot.app.config.businesses import resolve_business_by_channel
+from obebot.app.services.brain_router import interpret_message
+from obebot.app.services.smalltalk_service import smalltalk_answer, main_menu
+from obebot.app.services.rag_answer_service import ask_rag_answer
+from obebot.app.services.memory_service import add_user_message, add_ai_message
+from obebot.app.services.state_store_sqlite import (
     get_state, update_state, state_dict, reset_if_expired,
 )
-from oberoende_bot.app.services.name_extractor import extract_name
-from oberoende_bot.app.services.user_profile_store_sqlite import set_name
+from obebot.app.services.name_extractor import extract_name
+from obebot.app.services.user_profile_store_sqlite import set_name, get_name
 
+
+# =============================================================================
+# Estado del grafo
+# =============================================================================
 
 class BotState(TypedDict):
-    user_id: str                   # teléfono del cliente
-    channel_id: str                # número/phone_number_id del negocio
-    conversation_id: str           # business_id:user_id
-    business_id: str
+    user_id:         str             # teléfono del cliente
+    channel_id:      str             # phone_number_id de Meta o número Twilio
+    conversation_id: str             # "{business_id}:{user_id}"
+    business_id:     str
     business_config: dict[str, Any]
-    user_message: str
-    response: str
-    decision: Optional[str]
+    user_message:    str
+    response:        str
+    decision:        Optional[str]
 
+
+# =============================================================================
+# Helpers internos
+# =============================================================================
 
 def _normalize(text: str) -> str:
     text = text.strip().lower()
@@ -33,187 +42,117 @@ def _normalize(text: str) -> str:
 
 
 def _ensure_business_context(s: BotState) -> tuple[str, dict]:
+    """Rellena business_config y conversation_id si aún están vacíos."""
     business_config = s.get("business_config") or resolve_business_by_channel(s.get("channel_id"))
-    business_id = business_config["business_id"]
+    business_id     = business_config["business_id"]
     conversation_id = s.get("conversation_id") or f"{business_id}:{s['user_id']}"
 
-    s["business_id"] = business_id
+    s["business_id"]     = business_id
     s["business_config"] = business_config
     s["conversation_id"] = conversation_id
     return conversation_id, business_config
 
 
-def catalog_node(s: BotState) -> BotState:
-    uid = s["user_id"]
-    _, business_config = _ensure_business_context(s)
-    conversation_id = s["conversation_id"]
+def _is_appt_response(msg: str, stage: str) -> bool:
+    """
+    Pregunta al LLM si el mensaje es una respuesta genuina a la pregunta
+    del flujo de cita (servicio / fecha / hora / confirmación) o si es
+    una pregunta/desvío. Devuelve True si ES una respuesta al flujo.
+    Evita que "¿dónde están?" avance el appt_stage.
+    """
+    from langchain_openai import ChatOpenAI
+    import os
 
-    try:
-        from oberoende_bot.app.services.whatsapp_service import send_catalog_whatsapp
+    stage_labels = {
+        "await_service": "qué servicio o tipo de consulta necesita",
+        "await_date":    "qué día quiere la cita",
+        "await_time":    "qué hora prefiere",
+        "await_confirm": "si confirma o cancela la cita (sí/no)",
+        "await_cancel":  "su nombre o número de confirmación para cancelar",
+    }
+    expected = stage_labels.get(stage, "una pregunta del proceso de cita")
 
-        send_catalog_whatsapp(uid, business_config)
-        response_text = (
-            f"Te acabo de enviar el catálogo de {business_config['name']} por WhatsApp 📚\n"
-            "Revísalo y dime qué modelo te gustó."
-        )
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0,
+        api_key=os.getenv("OPENAI_API_KEY"),
+    )
 
-        update_state(
-            conversation_id,
-            last_intent="catalog",
-            pending_followup=True,
-            last_topic="catalog",
-        )
-    except Exception as e:
-        print(f"Error enviando catálogo: {e}")
-        pdf_url = business_config.get("catalog_pdf_url", "")
+    prompt = (
+        f"Estás en un chatbot de citas. Se le preguntó al usuario: '{expected}'.\n"
+        f"El usuario respondió: '{msg}'\n\n"
+        "¿Es esto una respuesta directa a la pregunta o es una pregunta/comentario diferente?\n"
+        "Responde SOLO con: RESPUESTA o PREGUNTA"
+    )
 
-        response_text = (
-            "No pude enviar el catálogo en este momento 😥\n"
-            f"Pero aquí tienes el PDF:\n{pdf_url}\n\n"
-            "✨ Escríbeme el nombre del modelo que te gustó y te ayudo con el precio."
-        )
-        update_state(
-            conversation_id,
-            last_intent="catalog",
-            pending_followup=True,
-            last_topic="catalog",
-        )
+    result = llm.invoke(prompt).content.strip().upper()
+    print(f"[APPT_GATE] stage={stage} msg='{msg}' → {result}")
+    return result == "RESPUESTA"
 
-    add_ai_message(conversation_id, response_text)
-    s["response"] = response_text
-    return s
 
+# =============================================================================
+# Nodos del grafo
+# =============================================================================
 
 def decide_node(s: BotState) -> BotState:
+    """
+    Nodo de entrada. Registra el mensaje, verifica sesión expirada,
+    extrae el nombre si viene en el mensaje y delega al router LLM
+    para obtener la decisión de routing.
+    """
     msg = s["user_message"]
-
     conversation_id, business_config = _ensure_business_context(s)
     add_user_message(conversation_id, msg)
 
-    # ── MEJORA 1: Timeout de sesión ───────────────────────────────────────────
-    # Si el usuario no escribió en SESSION_TIMEOUT_HOURS horas, reseteamos el
-    # estado de flujo/lead y mostramos el menú de bienvenida. Así alguien que
-    # vuelve 2 días después no queda atascado en un lead flow que ya olvidó.
-    session_expired = reset_if_expired(conversation_id)
-    if session_expired:
-        from oberoende_bot.app.services.user_profile_store_sqlite import get_name
-        name = get_name(conversation_id)  # ← busca el nombre guardado
-        resp = sales_menu(business_config, name)  # ← menú de bienvenida con nombre si lo hay
+    # ── 1. Timeout de sesión ──────────────────────────────────────────────────
+    # Si el usuario vuelve tras varias horas, reseteamos el flujo y mostramos
+    # el menú de bienvenida para que no quede atascado en una cita a medias.
+    if reset_if_expired(conversation_id):
+        name = get_name(conversation_id)
+        resp = main_menu(business_config, name)
         s["response"] = resp
         s["decision"] = "smalltalk"
         add_ai_message(conversation_id, resp)
         return s
 
     current_state = get_state(conversation_id)
-    # ── LOG DE ESTADO ─────────────────────────────────────────────────────────
-    print(f"[DECIDE] msg='{msg}'")
-    print(f"[DECIDE] last_intent={current_state.last_intent} | last_topic={current_state.last_topic} | lead_stage={current_state.lead_stage} | pending_followup={current_state.pending_followup}")
-    # ─────────────────────────────────────────────────────────────────────────
-    norm = _normalize(msg)
-    msg_lower = msg.lower().strip()
+    print(f"[DECIDE] msg='{msg}' | last_intent={current_state.last_intent} | appt_stage={current_state.appt_stage} | pending_followup={current_state.pending_followup}")
 
-    print('El usuario escribió:', repr(msg))
-
-    # ── 1. Si hay un lead en curso, saltar TODA la lógica de keywords ────────
-    # El usuario está respondiendo preguntas del lead flow (modelo, distrito,
-    # pago). Cualquier keyword de producto en su respuesta ("anillo de oro",
-    # "collar de plata") NO debe disparar el submenú — debe ir directo al nodo
-    # lead_flow. El router() ya sabe redirigirlo ahí.
-    if current_state.last_intent == "handoff" and current_state.lead_stage:
-        s["decision"] = None  # router() lo enviará a lead_flow
+    # ── 2. Si hay un flujo de cita en curso, ir directo sin pasar por LLM ────
+    # El usuario está en medio de agendar o cancelar. Cualquier mensaje suyo
+    # (incluso "el martes", "10am", "sí") debe ir al appointment_flow_node.
+    if current_state.appt_stage:
+        s["decision"] = None  # router() lo enviará a appointment_flow
         return s
 
-    # ── 2. Keyword de producto (ANTES del check numérico de followup) ────────
-    # Si el usuario menciona un producto concreto, siempre mostramos el submenú
-    # precio/material/comprar, aunque haya pending_followup=True de otro contexto.
-    # Esto evita que "El collar" caiga al LLM y sea clasificado como continue_followup.
-    # EXCEPCIÓN: si hay lead en curso (paso 1), ya retornamos antes de llegar aquí.
-    product_keywords = [p.lower() for p in business_config.get("product_keywords", [])]
-    matched_product = next(
-        (p for p in product_keywords if p in msg_lower), None
-    )
-    if matched_product:
-        body_text = "¡Excelente elección! ✨\n¿Qué te gustaría saber sobre ese modelo?"
-        buttons = ["Precio", "Material / detalles", "Comprar"]
-
-        try:
-            from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
-            send_whatsapp_buttons(s["user_id"], body_text, buttons)
-            resp = body_text
-        except Exception as e:
-            print(f"⚠️ Botones fallaron: {repr(e)}")
-            resp = (
-                "¡Excelente elección! ✨\n\n"
-                "¿Qué te gustaría saber sobre ese modelo?\n\n"
-                "1️⃣ Precio\n"
-                "2️⃣ Material / detalles\n"
-                "3️⃣ Comprar\n"
-            )
-
-        s["response"] = resp
-        s["decision"] = "product_buttons"
-        add_ai_message(conversation_id, resp)
-        update_state(
-            conversation_id,
-            last_product=matched_product,
-            pending_followup=True,
-            last_intent="product_interest",
-        )
-        return s
-
-    # ── 3. Números de menú estando en follow-up pendiente ────────────────────
-    # Va DESPUÉS de product_keywords para que "collar" no sea confundido.
-    if norm in {"1", "2", "3", "1️⃣", "2️⃣", "3️⃣"} and current_state.pending_followup:
-        s["decision"] = "continue_followup"
-        return s
-
-    # ── 4. Extracción de nombre ───────────────────────────────────────────────
+    # ── 3. Extracción de nombre ───────────────────────────────────────────────
     name = extract_name(msg)
     if name:
         set_name(conversation_id, name)
-        resp = sales_menu(business_config, name)
+        resp = main_menu(business_config, name)
         s["response"] = resp
         s["decision"] = "smalltalk"
         add_ai_message(conversation_id, resp)
         update_state(conversation_id, pending_followup=False)
         return s
 
-    # ── 5. Opciones numéricas del menú principal (SOLO sin followup activo) ───
-    # Se verifica explícitamente que NO hay followup para evitar que un "1" o "2"
-    # fuera de contexto active el catálogo o precio cuando el usuario está en
-    # medio de otra conversación.
+    # ── 4. Opciones numéricas del menú principal ──────────────────────────────
+    norm = _normalize(msg)
     if not current_state.pending_followup:
         if norm in {"1", "1️⃣"}:
-            s["decision"] = "catalog"
+            s["decision"] = "appointment"
             return s
-
         if norm in {"2", "2️⃣"}:
-            resp = (
-                "¡Claro! ✨\n"
-                f"Dime qué {business_config['product_examples']} te interesa "
-                "y te ayudo con el precio.\n\n"
-                "Puedes escribir el nombre del modelo."
-            )
-            s["response"] = resp
-            s["decision"] = "smalltalk"
-            add_ai_message(conversation_id, resp)
-            update_state(
-                conversation_id,
-                last_intent="price_prompt",
-                pending_followup=False,
-                last_topic="precio",
-            )
+            s["decision"] = "faq_rag"
+            return s
+        if norm in {"3", "3️⃣"}:
+            s["decision"] = "cancel_appointment"
+            return s
+        if norm in {"4", "4️⃣"}:
+            s["decision"] = "handoff"
             return s
 
-    if norm in {"3", "3️⃣", "comprar", "comprar un modelo", "hacer pedido"}:
-        s["decision"] = "handoff"
-        return s
-
-    if norm in {"4", "4️⃣", "asesor", "hablar con asesor"}:
-        s["decision"] = "handoff"
-        return s
-
-    # ── 6. Router LLM para todo lo demás ─────────────────────────────────────
+    # ── 5. Router LLM para todo lo demás ─────────────────────────────────────
     state_for_router = state_dict(conversation_id)
     decision = interpret_message(msg, state_for_router, business_config)
     print(f"[ROUTER LLM] msg='{msg}' → decision='{decision}'")
@@ -221,69 +160,188 @@ def decide_node(s: BotState) -> BotState:
     return s
 
 
-def followup_node(s: BotState) -> BotState:
-    conversation_id, _ = _ensure_business_context(s)
-    msg = s["user_message"]
+def appointment_flow_node(s: BotState) -> BotState:
+    """
+    Maneja el flujo conversacional de agendamiento paso a paso:
+      await_service → await_date → await_time → await_confirm → (cita creada)
 
-    choice = msg.strip()
-    st = get_state(conversation_id)
-    prod = st.last_product or "el producto"
+    También maneja el flujo de cancelación:
+      await_cancel → (cita cancelada)
 
-    if choice == "1":
-        resp = (
-            f"Claro ✨ Sobre el precio de {prod}:\n"
-            "escríbeme el nombre exacto del modelo y te digo el precio."
-        )
-        update_state(conversation_id, pending_followup=False, last_topic="precio")
+    El gate semántico (_is_appt_response) detecta si el usuario hizo una
+    pregunta fuera de contexto y la responde sin perder el flujo.
+    """
+    user_phone = s["user_id"]
+    conversation_id, business_config = _ensure_business_context(s)
+    msg = (s["user_message"] or "").strip()
+    msg_lower = msg.lower()
 
-    elif choice == "2":
-        resp = (
-            f"Genial ✨ Sobre el material o detalles de {prod}:\n"
-            "¿quieres saber medidas, material, colores o disponibilidad?"
-        )
-        update_state(conversation_id, pending_followup=False, last_topic="material")
+    from obebot.app.services.email_service import notify_owner_lead
 
-    elif choice == "3":
-        lead_q = s["business_config"]["lead_questions"]["model"]
-        resp = f"¡Perfecto! ✨ Para ayudarte con la compra:\n\n{lead_q}"
+    st           = get_state(conversation_id)
+    profile_name = get_name(conversation_id) or "Cliente"
+    stage        = st.appt_stage or "await_service"
+    questions    = business_config["appointment_questions"]
+
+    # ── Cancelación explícita del flujo ──────────────────────────────────────
+    if msg_lower in {"cancelar", "salir", "no quiero", "olvidalo", "olvídalo"}:
+        resp = "Entendido ✅ Cuando quieras, escríbeme para agendar una cita."
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
         update_state(
             conversation_id,
-            last_intent="handoff",
-            pending_followup=True,
-            lead_stage="await_model",
-            lead_model=None,
-            lead_district=None,
-            lead_payment=None,
+            pending_followup=False,
+            appt_stage=None, appt_service=None,
+            appt_date=None, appt_time=None, appt_event_id=None,
         )
+        return s
 
-    else:
-        # Texto libre — reenviar botones de opciones sin romper el flujo
-        prod_label = prod if prod != "el producto" else "ese modelo"
-        body_text = f"Para ayudarte con {prod_label}, elige una opción:"
-        buttons = ["Precio", "Material / detalles", "Comprar"]
-        try:
-            from oberoende_bot.app.services.whatsapp_service import send_whatsapp_buttons
-            send_whatsapp_buttons(s["user_id"], body_text, buttons)
-            resp = body_text
-            s["response"] = ""
-        except Exception:
-            resp = (
-                f"Para ayudarte con {prod_label}, elige una opción:\n\n"
-                "1️⃣ Precio\n"
-                "2️⃣ Material / detalles\n"
-                "3️⃣ Comprar\n"
-            )
-            s["response"] = resp
-        update_state(conversation_id, pending_followup=True)
+    # ── Gate semántico ────────────────────────────────────────────────────────
+    # Si el usuario desvía la conversación con una pregunta, la respondemos
+    # con RAG y recordamos en qué etapa estábamos.
+    if not _is_appt_response(msg, stage):
+        answer, _ = ask_rag_answer(msg, conversation_id, business_config)
+        stage_reminders = {
+            "await_service": questions["service"],
+            "await_date":    questions["date"],
+            "await_time":    "¿Qué hora prefieres?",
+            "await_confirm": questions["confirm"].format(
+                date=st.appt_date or "?",
+                time=st.appt_time or "?",
+                service=st.appt_service or "?",
+            ),
+            "await_cancel":  questions["cancel_ask"],
+        }
+        reminder = stage_reminders.get(stage, "")
+        resp = f"{answer}\n\n---\n📋 Cuando quieras continuar:\n{reminder}"
+        s["response"] = answer
         add_ai_message(conversation_id, resp)
         return s
 
+    # ── Flujo de cancelación ──────────────────────────────────────────────────
+    if stage == "await_cancel":
+        # Por ahora guardamos el identificador que dio el usuario.
+        # Cuando integremos Google Calendar, aquí buscaremos y eliminaremos el evento.
+        resp = questions["cancel_success"]
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
+        update_state(
+            conversation_id,
+            pending_followup=False, last_intent="cancel_appointment",
+            appt_stage=None, appt_service=None,
+            appt_date=None, appt_time=None, appt_event_id=None,
+        )
+        return s
+
+    # ── Flujo de agendamiento ─────────────────────────────────────────────────
+
+    # Etapa 1: recibir servicio
+    if stage == "await_service":
+        update_state(conversation_id, appt_service=msg, appt_stage="await_date")
+        resp = questions["date"]
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
+        return s
+
+    # Etapa 2: recibir fecha y mostrar slots disponibles
+    if stage == "await_date":
+        # TODO: cuando integremos calendar_service, aquí consultaremos
+        # los slots reales de Google Calendar para la fecha dada.
+        # Por ahora mostramos los horarios configurados en businesses.py.
+        hours = business_config.get("appointment_hours", [])
+        slots = "\n".join(f"{i+1}️⃣ {h}" for i, h in enumerate(hours)) if hours else "No hay horarios configurados."
+        resp = questions["time"].format(date=msg, slots=slots)
+        update_state(conversation_id, appt_date=msg, appt_stage="await_time")
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
+        return s
+
+    # Etapa 3: recibir hora y pedir confirmación
+    if stage == "await_time":
+        # El usuario puede responder con un número ("2") o con la hora ("14:00").
+        # Intentamos resolver el número al horario correspondiente.
+        hours = business_config.get("appointment_hours", [])
+        chosen_time = msg
+        if msg.strip().isdigit():
+            idx = int(msg.strip()) - 1
+            if 0 <= idx < len(hours):
+                chosen_time = hours[idx]
+
+        update_state(conversation_id, appt_time=chosen_time, appt_stage="await_confirm")
+        resp = questions["confirm"].format(
+            date=st.appt_date or msg,
+            time=chosen_time,
+            service=st.appt_service or "",
+        )
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
+        return s
+
+    # Etapa 4: confirmación final → crear la cita
+    if stage == "await_confirm":
+        norm = _normalize(msg)
+
+        if norm in {"no", "nop", "nope", "nel"}:
+            resp = "Sin problema ✅ Escríbeme cuando quieras intentar con otra fecha u hora."
+            s["response"] = resp
+            add_ai_message(conversation_id, resp)
+            update_state(
+                conversation_id,
+                pending_followup=False,
+                appt_stage=None, appt_service=None,
+                appt_date=None, appt_time=None,
+            )
+            return s
+
+        # Confirmado: guardar cita
+        # TODO: aquí llamaremos a calendar_service.create_event() cuando esté listo.
+        st_final = get_state(conversation_id)
+        service  = st_final.appt_service or ""
+        date     = st_final.appt_date    or ""
+        time     = st_final.appt_time    or ""
+
+        # Notificación por email al dueño del negocio
+        email_text = (
+            "NUEVA CITA AGENDADA\n\n"
+            f"Negocio:  {business_config['name']}\n"
+            f"Cliente:  {user_phone}\n"
+            f"Nombre:   {profile_name}\n"
+            f"Servicio: {service}\n"
+            f"Fecha:    {date}\n"
+            f"Hora:     {time}\n"
+        )
+        try:
+            notify_owner_lead(
+                user_id=user_phone,
+                channel="whatsapp",
+                lead_text=email_text,
+                subject=business_config.get("lead_email_subject"),
+            )
+        except Exception as e:
+            print("⚠️ Error enviando email de cita:", repr(e))
+
+        resp = questions["success"].format(date=date, time=time, service=service)
+        s["response"] = resp
+        add_ai_message(conversation_id, resp)
+        update_state(
+            conversation_id,
+            last_intent="appointment",
+            pending_followup=False,
+            appt_stage=None, appt_service=None,
+            appt_date=None, appt_time=None,
+        )
+        return s
+
+    # ── Fallback: estado inesperado, reiniciar flujo ──────────────────────────
+    resp = f"Vamos de nuevo 🙂\n\n{questions['service']}"
     s["response"] = resp
     add_ai_message(conversation_id, resp)
+    update_state(conversation_id, appt_stage="await_service")
     return s
 
 
 def rag_node(s: BotState) -> BotState:
+    """Responde preguntas informativas usando el vectorstore del negocio."""
     conversation_id, business_config = _ensure_business_context(s)
     q = s["user_message"]
 
@@ -295,295 +353,123 @@ def rag_node(s: BotState) -> BotState:
         conversation_id,
         last_intent="faq_rag",
         last_topic=signals.get("topic"),
-        last_product=signals.get("product"),
-        pending_followup=bool(signals.get("pending_followup")),
         last_answer=answer,
         last_question=q,
+        pending_followup=bool(signals.get("pending_followup")),
     )
     return s
 
 
 def smalltalk_node(s: BotState) -> BotState:
+    """Maneja saludos, agradecimientos y charla casual."""
     conversation_id, business_config = _ensure_business_context(s)
     msg = s["user_message"]
 
     resp = s.get("response") or smalltalk_answer(conversation_id, msg, business_config)
-
     s["response"] = resp
     add_ai_message(conversation_id, resp)
-    update_state(
-        conversation_id,
-        last_intent="smalltalk",
-        pending_followup=False,  #delete de pending follow to avoid the last conversation when user request to catalog
-    )
+    update_state(conversation_id, last_intent="smalltalk", pending_followup=False)
     return s
 
 
 def handoff_node(s: BotState) -> BotState:
+    """Informa al usuario que será atendido por una persona."""
     conversation_id, business_config = _ensure_business_context(s)
-    lead_q = business_config["lead_questions"]["model"]
 
-    response = (
-        "¡Con gusto! 👋 Un asesor te atenderá en breve.\n\n"
-        "Mientras tanto, para agilizar tu atención:\n\n"
-        f"{lead_q}"
+    resp = (
+        f"Entendido 👋 En breve un miembro del equipo de {business_config['name']} "
+        "te atenderá personalmente.\n\n"
+        "Si prefieres, también puedo ayudarte a *agendar una cita* ahora mismo. "
+        "¿Te gustaría hacerlo?"
     )
-
-    s["response"] = response
-    add_ai_message(conversation_id, response)
-
-    update_state(
-        conversation_id,
-        last_intent="handoff",
-        pending_followup=True,
-        lead_stage="await_model",
-        lead_model=None,
-        lead_district=None,
-        lead_payment=None,
-    )
-    return s
-
-# ── Añadir esta función helper cerca de _normalize ────────────────────────
-def _is_lead_response(msg: str, stage: str, business_config: dict) -> bool:
-    """
-    Pregunta al LLM si el mensaje del usuario es una respuesta genuina
-    a la pregunta del lead (modelo/distrito/pago) o es una pregunta/desvío.
-    Devuelve True si ES una respuesta al lead, False si es una pregunta.
-    
-    Esto evita que "cómo se llama el negocio?" avance el lead_stage.
-    """
-    from langchain_openai import ChatOpenAI
-    import os
-
-    stage_labels = {
-        "await_model":    "qué modelo le interesa comprar",
-        "await_district": "en qué distrito vive",
-        "await_payment":  "cómo prefiere pagar",
-    }
-    expected = stage_labels.get(stage, "una pregunta del proceso de compra")
-
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
-
-    prompt = (
-        f"Estás en un chatbot de ventas. Se le preguntó al usuario: '{expected}'.\n"
-        f"El usuario respondió: '{msg}'\n\n"
-        "¿Es esto una respuesta directa a la pregunta (nombre de producto, "
-        "lugar, método de pago, etc.) o es una pregunta/comentario diferente?\n"
-        "Responde SOLO con: RESPUESTA o PREGUNTA"
-    )
-
-    result = llm.invoke(prompt).content.strip().upper()
-    print(f"[LEAD_GATE] stage={stage} msg='{msg}' → {result}")
-    return result == "RESPUESTA"
-
-
-def lead_flow_node(s: BotState) -> BotState:
-    user_phone = s["user_id"]
-    conversation_id, business_config = _ensure_business_context(s)
-    msg = (s["user_message"] or "").strip()
-
-    from oberoende_bot.app.services.user_profile_store_sqlite import get_name
-    from oberoende_bot.app.services.leads_store import save_lead
-    from oberoende_bot.app.services.email_service import notify_owner_lead
-
-    # ── Leer estado UNA sola vez al inicio del nodo ───────────────────────────
-    st = get_state(conversation_id)
-    profile_name = get_name(conversation_id) or "Cliente"
-    stage = st.lead_stage or "await_model"
-
-    # ── Cancelación ──────────────────────────────────────────────────────────
-    if msg.lower() in {"cancelar", "salir", "no"}:
-        resp = "Entendido ✅ Si deseas retomar la compra, escríbeme nuevamente."
-        s["response"] = resp
-        add_ai_message(conversation_id, resp)
-        update_state(
-            conversation_id,
-            pending_followup=False,
-            lead_stage=None,
-            lead_model=None,
-            lead_district=None,
-            lead_payment=None,
-        )
-        return s
-
-    # ── Gate semántico: ¿el mensaje es realmente una respuesta al lead? ───────
-    # Si el usuario pregunta algo fuera de contexto ("cómo se llama el negocio",
-    # "cuánto cuesta X") en vez de responder la pregunta del lead, lo atendemos
-    # sin avanzar el lead_stage. El flujo queda intacto para que lo retome.
-    if not _is_lead_response(msg, stage, business_config):
-        answer, _ = ask_rag_answer(msg, conversation_id, business_config)
-        # Añadir un recordatorio de en qué estábamos
-        stage_reminders = {
-            "await_model":    business_config["lead_questions"]["model"],
-            "await_district": business_config["lead_questions"]["district"],
-            "await_payment":  business_config["lead_questions"]["payment"],
-        }
-        reminder = stage_reminders.get(stage, "")
-        resp = f"{answer}\n\n---\n📋 Cuando quieras continuar con tu pedido:\n{reminder}"
-        s["response"] = answer
-        add_ai_message(conversation_id, resp)
-        return s
-    
-    # ── Etapa 1: recibir modelo ───────────────────────────────────────────────
-    if stage == "await_model":
-        update_state(conversation_id, lead_model=msg, lead_stage="await_district")
-        resp = business_config["lead_questions"]["district"]
-        s["response"] = resp
-        add_ai_message(conversation_id, resp)
-        return s
-
-    # ── Etapa 2: recibir distrito ─────────────────────────────────────────────
-    if stage == "await_district":
-        update_state(conversation_id, lead_district=msg, lead_stage="await_payment")
-        resp = business_config["lead_questions"]["payment"]
-        s["response"] = resp
-        add_ai_message(conversation_id, resp)
-        return s
-
-    # ── Etapa 3: recibir pago y guardar lead ──────────────────────────────────
-    if stage == "await_payment":
-        update_state(conversation_id, lead_payment=msg)
-        st_final = get_state(conversation_id)  # lectura única después del write
-
-        product  = st_final.lead_model    or ""
-        district = st_final.lead_district or ""
-        payment  = st_final.lead_payment  or ""
-
-        save_lead(
-            user_id=user_phone,
-            channel="whatsapp",
-            name=profile_name,
-            product=product,
-            district=district,
-            payment_method=payment,
-            raw_message=(
-                f"Negocio: {business_config['name']}\n"
-                f"Modelo: {product}\n"
-                f"Distrito: {district}\n"
-                f"Pago: {payment}"
-            ),
-        )
-
-        lead_text_email = (
-            "NUEVO LEAD\n\n"
-            f"Negocio: {business_config['name']}\n"
-            f"Cliente (WhatsApp): {user_phone}\n"
-            f"Nombre: {profile_name}\n"
-            f"Modelo: {product}\n"
-            f"Distrito: {district}\n"
-            f"Pago: {payment}\n"
-        )
-        try:
-            notify_owner_lead(
-                user_id=user_phone,
-                channel="whatsapp",
-                lead_text=lead_text_email,
-                subject=business_config.get("lead_email_subject"),
-            )
-        except Exception as e:
-            print("⚠️ Error enviando email:", repr(e))
-
-        resp = (
-            "¡Listo! ✅ Ya registré tus datos.\n"
-            "Un asesor te contactará en breve para ayudarte con tu compra."
-        )
-        s["response"] = resp
-        add_ai_message(conversation_id, resp)
-
-        update_state(
-            conversation_id,
-            pending_followup=False,
-            lead_stage=None,
-            lead_model=None,
-            lead_district=None,
-            lead_payment=None,
-        )
-        return s
-
-    # ── Fallback: estado inesperado, reiniciar flujo ──────────────────────────
-    resp = f"Vamos de nuevo 🙂 {business_config['lead_questions']['model']}"
     s["response"] = resp
     add_ai_message(conversation_id, resp)
-    update_state(conversation_id, lead_stage="await_model")
+    update_state(conversation_id, last_intent="handoff", pending_followup=False)
     return s
 
 
-def product_node(s: BotState) -> BotState:
-    # Los botones ya fueron enviados directamente desde decide_node.
-    # Este nodo existe solo para que el grafo tenga un destino válido
-    # y el webhook NO reenvíe s["response"] como texto duplicado.
-    s["response"] = ""
+def cancel_appointment_node(s: BotState) -> BotState:
+    """Inicia el flujo de cancelación de cita."""
+    conversation_id, business_config = _ensure_business_context(s)
+    questions = business_config["appointment_questions"]
+
+    resp = questions["cancel_ask"]
+    s["response"] = resp
+    add_ai_message(conversation_id, resp)
+    update_state(
+        conversation_id,
+        last_intent="cancel_appointment",
+        pending_followup=True,
+        appt_stage="await_cancel",
+    )
     return s
 
 
+# =============================================================================
+# Router — decide a qué nodo va después de decide_node
+# =============================================================================
 
+def router(s: BotState) -> str:
     conversation_id, _ = _ensure_business_context(s)
-    decision = s.get("decision")
-    st = get_state(conversation_id)
-    print(f"[ROUTER] decision={decision} | last_intent={st.last_intent} | lead_stage={st.lead_stage} | pending_followup={st.pending_followup}")
+    decision  = s.get("decision")
+    st        = get_state(conversation_id)
 
-    if st.last_intent == "handoff" and st.pending_followup and st.lead_stage:
-        print("[ROUTER] → lead_flow")
-        return "lead_flow"
+    print(f"[ROUTER] decision={decision} | last_intent={st.last_intent} | appt_stage={st.appt_stage}")
 
-    if decision == "continue_followup" and st.pending_followup:
-        print("[ROUTER] → smalltalk")
-        return "followup"
+    # Si hay un flujo de cita activo (agendando o cancelando), prioridad absoluta
+    if st.appt_stage:
+        print("[ROUTER] → appointment_flow (stage activo)")
+        return "appointment_flow"
 
-    if decision == "product_buttons":
-        print("[ROUTER] → product")
-        return "product"
+    if decision == "appointment":
+        return "appointment_flow"
 
-    if decision == "smalltalk":
-        print("[ROUTER] → smalltalk")
-        return "smalltalk"
+    if decision == "cancel_appointment":
+        return "cancel_appointment"
 
     if decision == "handoff":
-        print("[ROUTER] → handoff")
         return "handoff"
 
-    if decision == "catalog":
-        print("[ROUTER] → catalog")
-        return "catalog"
+    if decision == "faq_rag":
+        return "rag"
 
-    print("[ROUTER] → rag")
+    if decision == "smalltalk":
+        return "smalltalk"
+
+    # Fallback seguro
+    print("[ROUTER] → rag (fallback)")
     return "rag"
 
 
+# =============================================================================
+# Construcción del grafo
+# =============================================================================
+
 def build_graph():
     g = StateGraph(BotState)
-    g.add_node("decide", decide_node)
-    g.add_node("product", product_node)
-    g.add_node("followup", followup_node)
-    g.add_node("rag", rag_node)
-    g.add_node("smalltalk", smalltalk_node)
-    g.add_node("handoff", handoff_node)
-    g.add_node("catalog", catalog_node)
-    g.add_node("lead_flow", lead_flow_node)
+
+    g.add_node("decide",             decide_node)
+    g.add_node("appointment_flow",   appointment_flow_node)
+    g.add_node("cancel_appointment", cancel_appointment_node)
+    g.add_node("rag",                rag_node)
+    g.add_node("smalltalk",          smalltalk_node)
+    g.add_node("handoff",            handoff_node)
 
     g.set_entry_point("decide")
 
     g.add_conditional_edges("decide", router, {
-        "lead_flow": "lead_flow",
-        "product": "product",
-        "followup": "followup",
-        "rag": "rag",
-        "smalltalk": "smalltalk",
-        "handoff": "handoff",
-        "catalog": "catalog",
+        "appointment_flow":   "appointment_flow",
+        "cancel_appointment": "cancel_appointment",
+        "rag":                "rag",
+        "smalltalk":          "smalltalk",
+        "handoff":            "handoff",
     })
 
-    g.add_edge("product", END)
-    g.add_edge("followup", END)
-    g.add_edge("rag", END)
-    g.add_edge("smalltalk", END)
-    g.add_edge("handoff", END)
-    g.add_edge("catalog", END)
-    g.add_edge("lead_flow", END)
+    g.add_edge("appointment_flow",   END)
+    g.add_edge("cancel_appointment", END)
+    g.add_edge("rag",                END)
+    g.add_edge("smalltalk",          END)
+    g.add_edge("handoff",            END)
 
     return g.compile()
 
