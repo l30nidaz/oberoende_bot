@@ -66,8 +66,8 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         # ── RAG / base de conocimiento ────────────────────────────────────────
         # Coloca aquí archivos .txt / .pdf / .docx con información del negocio:
         # servicios ofrecidos, precios, ubicación, preguntas frecuentes, etc.
-        "documents_path":   "obebot/data/businesses/demo/documentos",
-        "vectorstore_path": "obebot/data/businesses/demo/vectorstore",
+        "documents_path":   "oberoende_bot/data/businesses/demo/documentos",
+        "vectorstore_path": "oberoende_bot/data/businesses/demo/vectorstore",
 
         # ── Google Calendar ───────────────────────────────────────────────────
         # calendar_id: correo del Google Calendar del negocio.
@@ -156,8 +156,8 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
     #         "",
     #     ],
     #     "lead_email_subject": "Nueva cita - Nombre Visible",
-    #     "documents_path":   "obebot/data/businesses/nombre_cliente/documentos",
-    #     "vectorstore_path": "obebot/data/businesses/nombre_cliente/vectorstore",
+    #     "documents_path":   "oberoende_bot/data/businesses/nombre_cliente/documentos",
+    #     "vectorstore_path": "oberoende_bot/data/businesses/nombre_cliente/vectorstore",
     #     "calendar_id":                  "cliente@gmail.com",
     #     "calendar_credentials_path":    "secrets/nombre_cliente_calendar.json",
     #     "appointment_duration_minutes": 30,

@@ -1,8 +1,8 @@
-# obebot/app/services/smalltalk_service.py
+# oberoende_bot/app/services/smalltalk_service.py
 import re
 
-from obebot.app.services.state_store_sqlite import update_state
-from obebot.app.services.user_profile_store_sqlite import get_name
+from oberoende_bot.app.services.state_store_sqlite import update_state
+from oberoende_bot.app.services.user_profile_store_sqlite import get_name
 
 
 def _normalize(text: str) -> str:

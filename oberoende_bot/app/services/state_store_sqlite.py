@@ -1,4 +1,4 @@
-# obebot/app/services/state_store_sqlite.py
+# oberoende_bot/app/services/state_store_sqlite.py
 from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, asdict

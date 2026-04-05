@@ -1,18 +1,18 @@
-# obebot/app/graph/graph_engine.py
+# oberoende_bot/app/graph/graph_engine.py
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Optional, Any
 import re
 
-from obebot.app.config.businesses import resolve_business_by_channel
-from obebot.app.services.brain_router import interpret_message
-from obebot.app.services.smalltalk_service import smalltalk_answer, main_menu
-from obebot.app.services.rag_answer_service import ask_rag_answer
-from obebot.app.services.memory_service import add_user_message, add_ai_message
-from obebot.app.services.state_store_sqlite import (
+from oberoende_bot.app.config.businesses import resolve_business_by_channel
+from oberoende_bot.app.services.brain_router import interpret_message
+from oberoende_bot.app.services.smalltalk_service import smalltalk_answer, main_menu
+from oberoende_bot.app.services.rag_answer_service import ask_rag_answer
+from oberoende_bot.app.services.memory_service import add_user_message, add_ai_message
+from oberoende_bot.app.services.state_store_sqlite import (
     get_state, update_state, state_dict, reset_if_expired,
 )
-from obebot.app.services.name_extractor import extract_name
-from obebot.app.services.user_profile_store_sqlite import set_name, get_name
+from oberoende_bot.app.services.name_extractor import extract_name
+from oberoende_bot.app.services.user_profile_store_sqlite import set_name, get_name
 
 
 # =============================================================================
@@ -176,7 +176,7 @@ def appointment_flow_node(s: BotState) -> BotState:
     msg = (s["user_message"] or "").strip()
     msg_lower = msg.lower()
 
-    from obebot.app.services.email_service import notify_owner_lead
+    from oberoende_bot.app.services.email_service import notify_owner_lead
 
     st           = get_state(conversation_id)
     profile_name = get_name(conversation_id) or "Cliente"
