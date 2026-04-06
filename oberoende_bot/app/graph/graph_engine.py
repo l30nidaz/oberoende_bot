@@ -140,10 +140,11 @@ def decide_node(s: BotState) -> BotState:
     norm = _normalize(msg)
     if not current_state.pending_followup:
         menu_routing = business_config.get("menu_routing", {})
-        if norm.replace("️⃣","").strip() in menu_routing:
-            s["decision"] = menu_routing[norm.replace("️⃣","").strip()]
+        clean = norm.replace("️⃣", "").strip()
+        if clean in menu_routing:
+            s["decision"] = menu_routing[clean]
             return s
-
+        
     # ── 5. Router LLM para todo lo demás ─────────────────────────────────────
     state_for_router = state_dict(conversation_id)
     decision = interpret_message(msg, state_for_router, business_config)

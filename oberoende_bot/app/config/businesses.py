@@ -51,6 +51,12 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
             "3️⃣ Cancelar o modificar cita",
             "4️⃣ Hablar con un asesor",
         ],
+        "menu_routing": {
+            "1": "appointment",
+            "2": "faq_rag",
+            "3": "cancel_appointment",
+            "4": "handoff",
+        },
 
         # ── Canales WhatsApp ──────────────────────────────────────────────────
         # Phone Number ID de Meta y/o número Twilio del negocio.
