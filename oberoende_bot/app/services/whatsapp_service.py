@@ -3,7 +3,7 @@ from fastapi import Request
 from oberoende_bot.app.services.provider_config import get_whatsapp_provider
 
 
-def send_whatsapp_text(to_number: str, body: str):
+def send_whatsapp_text(to_number: str, body: str, business_config: dict = None):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_whatsapp_text as impl
@@ -12,27 +12,28 @@ def send_whatsapp_text(to_number: str, body: str):
     return impl(to_number, body)
 
 
-def send_whatsapp_image(to_number: str, image_url: str, caption: str | None = None):
+def send_whatsapp_image(to_number: str, image_url: str, caption: str | None = None, business_config: dict = None):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_whatsapp_image as impl
     else:
         from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_image as impl
-    return impl(to_number, image_url, caption)
+    return impl(to_number, image_url, caption, business_config)
 
 
 def send_whatsapp_document(
     to_number: str,
     document_url: str,
     filename: str = "catalogo.pdf",
-    caption: str | None = None
+    caption: str | None = None,
+    business_config: dict = None
 ):
     provider = get_whatsapp_provider()
     if provider == "twilio":
         from oberoende_bot.app.services.twilio_whatsapp_service import send_whatsapp_document as impl
     else:
         from oberoende_bot.app.services.meta_whatsapp_service import send_whatsapp_document as impl
-    return impl(to_number, document_url, filename, caption)
+    return impl(to_number, document_url, filename, caption, business_config)
 
 
 async def handle_whatsapp(request: Request):

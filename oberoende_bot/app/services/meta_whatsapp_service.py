@@ -41,25 +41,28 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_
     return hmac.compare_digest(expected, signature_header)
 
 
-def _get_config():
-    token = os.getenv("WHATSAPP_TOKEN")
-    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+def _get_config(business_config: dict = None):
+    if business_config:
+        token = business_config.get("whatsapp_token", "")
+        phone_number_id = business_config.get("whatsapp_phone_number_id", "")
+    else:
+        token = os.getenv("WHATSAPP_TOKEN")
+        phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
     graph_api_version = os.getenv("WHATSAPP_GRAPH_VERSION", "v25.0")
     base_url = f"https://graph.facebook.com/{graph_api_version}/{phone_number_id}/messages"
     return token, phone_number_id, graph_api_version, base_url
 
 
-def _headers():
-    token, _, _, _ = _get_config()
+def _headers(business_config: dict = None):
+    token, _, _, _ = _get_config(business_config)
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
 
-def send_whatsapp_text(to_number: str, body: str):
-    _, _, _, base_url = _get_config()
-
+def send_whatsapp_text(to_number: str, body: str, business_config: dict = None):
+    _, _, _, base_url = _get_config(business_config)
     payload = {
         "messaging_product": "whatsapp",
         "to": to_number,
@@ -69,14 +72,13 @@ def send_whatsapp_text(to_number: str, body: str):
             "body": body,
         },
     }
-
-    response = requests.post(base_url, headers=_headers(), json=payload, timeout=30)
+    response = requests.post(base_url, headers=_headers(business_config), json=payload, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def send_whatsapp_image(to_number: str, image_url: str, caption: str | None = None):
-    _, _, _, base_url = _get_config()
+def send_whatsapp_image(to_number: str, image_url: str, caption: str | None = None, business_config: dict = None):
+    _, _, _, base_url = _get_config(business_config)
 
     image_obj = {"link": image_url}
     if caption:
@@ -362,7 +364,7 @@ async def handle_incoming_whatsapp(request: Request):
 
     try:
         if response_text:
-            send_whatsapp_text(from_number, response_text)
+            send_whatsapp_text(from_number, response_text, business_config=business_config)
     except Exception as e:
         print("⚠️ Error enviando respuesta a WhatsApp Meta:", repr(e))
 
