@@ -35,7 +35,8 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_
         body_bytes,
         hashlib.sha256,
     ).hexdigest()
-
+    print(f"🔐 HMAC esperado: {expected}")
+    print(f"🔐 HMAC recibido: {signature_header}")
     # Comparación en tiempo constante para evitar timing attacks
     return hmac.compare_digest(expected, signature_header)
 
