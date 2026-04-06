@@ -139,17 +139,9 @@ def decide_node(s: BotState) -> BotState:
     # ── 4. Opciones numéricas del menú principal ──────────────────────────────
     norm = _normalize(msg)
     if not current_state.pending_followup:
-        if norm in {"1", "1️⃣"}:
-            s["decision"] = "appointment"
-            return s
-        if norm in {"2", "2️⃣"}:
-            s["decision"] = "faq_rag"
-            return s
-        if norm in {"3", "3️⃣"}:
-            s["decision"] = "cancel_appointment"
-            return s
-        if norm in {"4", "4️⃣"}:
-            s["decision"] = "handoff"
+        menu_routing = business_config.get("menu_routing", {})
+        if norm.replace("️⃣","").strip() in menu_routing:
+            s["decision"] = menu_routing[norm.replace("️⃣","").strip()]
             return s
 
     # ── 5. Router LLM para todo lo demás ─────────────────────────────────────

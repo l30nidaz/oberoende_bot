@@ -175,6 +175,12 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
              "cancel_success": "✅ Cita cancelada. ¡Hasta pronto!",
              "no_slots":       "No hay horarios el {date}. ¿Pruebas otro día?",
          },
+         "menu_routing": {
+            "1": "faq_rag",
+            "2": "faq_rag",
+            "3": "appointment",
+            "4": "handoff",
+        },
         "channel_ids": [
             os.getenv("OBEROENDE_META_PHONE_NUMBER_ID", "").strip(),
         ],
