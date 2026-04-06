@@ -293,6 +293,11 @@ async def handle_incoming_whatsapp(request: Request):
     app_secret = business_config.get("whatsapp_app_secret", "").strip()
     signature = request.headers.get("X-Hub-Signature-256")
     
+
+    print(f"📱 phone_number_id recibido: {phone_number_id}")
+    print(f"🏢 negocio resuelto: {business_config['business_id']}")
+    print(f"🔑 secret usado: {app_secret[:8]}...")
+
     if app_secret and not _verify_hmac_signature(body_bytes, signature, app_secret):
         print(f"🚨 HMAC inválido para negocio {business_config['business_id']}")
         return JSONResponse({"status": "forbidden"}, status_code=403)
