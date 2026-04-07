@@ -213,9 +213,42 @@ def appointment_flow_node(s: BotState) -> BotState:
 
     # ── Flujo de cancelación ──────────────────────────────────────────────────
     if stage == "await_cancel":
-        # Por ahora guardamos el identificador que dio el usuario.
-        # Cuando integremos Google Calendar, aquí buscaremos y eliminaremos el evento.
-        resp = questions["cancel_success"]
+        from oberoende_bot.app.services.calendar_service import (
+            find_event_by_phone, cancel_event,
+        )
+ 
+        calendar_id      = business_config.get("calendar_id", "")
+        credentials_path = business_config.get("calendar_credentials_path", "")
+        questions        = business_config["appointment_questions"]
+ 
+        # El usuario puede decir "mi número" → usar su propio teléfono
+        lookup_phone = user_phone if "mi número" in msg.lower() else msg.strip()
+ 
+        cancelled_count = 0
+        if calendar_id and credentials_path:
+            events = find_event_by_phone(
+                calendar_id=calendar_id,
+                credentials_path=credentials_path,
+                client_phone=lookup_phone,
+            )
+            for ev in events:
+                ok = cancel_event(
+                    calendar_id=calendar_id,
+                    credentials_path=credentials_path,
+                    event_id=ev["event_id"],
+                )
+                if ok:
+                    cancelled_count += 1
+ 
+        if cancelled_count > 0:
+            resp = questions["cancel_success"]
+        else:
+            # No encontramos citas — avisamos pero no bloqueamos
+            resp = (
+                "🔍 No encontré citas próximas para ese número.\n\n"
+                "Si crees que hay un error, escribe *menú* y te ayudo desde cero."
+            )
+ 
         s["response"] = resp
         add_ai_message(conversation_id, resp)
         update_state(
@@ -238,30 +271,62 @@ def appointment_flow_node(s: BotState) -> BotState:
 
     # Etapa 2: recibir fecha y mostrar slots disponibles
     if stage == "await_date":
-        # TODO: cuando integremos calendar_service, aquí consultaremos
-        # los slots reales de Google Calendar para la fecha dada.
-        # Por ahora mostramos los horarios configurados en businesses.py.
-        hours = business_config.get("appointment_hours", [])
-        slots = "\n".join(f"{i+1}️⃣ {h}" for i, h in enumerate(hours)) if hours else "No hay horarios configurados."
-        resp = questions["time"].format(date=msg, slots=slots)
-        update_state(conversation_id, appt_date=msg, appt_stage="await_time")
+        from oberoende_bot.app.services.calendar_service import get_available_slots
+        calendar_id       = business_config.get("calendar_id", "")
+        credentials_path  = business_config.get("calendar_credentials_path", "")
+        duration_min      = business_config.get("appointment_duration_minutes", 30)
+        allowed_hours     = business_config.get("appointment_hours", [])
+        allowed_days      = business_config.get("appointment_days")
+ 
+        if calendar_id and credentials_path:
+            free_slots = get_available_slots(
+                calendar_id=calendar_id,
+                credentials_path=credentials_path,
+                date_str=msg,
+                duration_min=duration_min,
+                allowed_hours=allowed_hours,
+                allowed_days=allowed_days,
+            )
+        else:
+            # Fallback: sin Calendar configurado, mostrar todos los horarios
+            free_slots = allowed_hours
+ 
+        if not free_slots:
+            resp = business_config["appointment_questions"]["no_slots"].format(date=msg)
+            s["response"] = resp
+            add_ai_message(conversation_id, resp)
+            # NO avanzamos el stage: el usuario debe elegir otra fecha
+            update_state(conversation_id, appt_date=None)
+            return s
+ 
+        slots = "\n".join(f"{i+1}️⃣ {h}" for i, h in enumerate(free_slots))
+        resp = business_config["appointment_questions"]["time"].format(date=msg, slots=slots)
+        update_state(conversation_id, appt_date=msg, appt_stage="await_time",
+                     appt_service=st.appt_service)
+        # Guardamos los slots disponibles en el estado para que await_time
+        # pueda resolver "2" → el segundo slot real, no el segundo de la lista completa.
+        # Usamos last_answer como almacén temporal de la lista serializada.
+        update_state(conversation_id, last_answer=",".join(free_slots))
         s["response"] = resp
         add_ai_message(conversation_id, resp)
         return s
 
     # Etapa 3: recibir hora y pedir confirmación
     if stage == "await_time":
-        # El usuario puede responder con un número ("2") o con la hora ("14:00").
-        # Intentamos resolver el número al horario correspondiente.
-        hours = business_config.get("appointment_hours", [])
-        chosen_time = msg
-        if msg.strip().isdigit():
-            idx = int(msg.strip()) - 1
-            if 0 <= idx < len(hours):
-                chosen_time = hours[idx]
-
+        # Recuperar la lista de slots reales guardada en await_date
+        saved_slots_raw = st.last_answer or ""
+        real_slots = [s.strip() for s in saved_slots_raw.split(",") if s.strip()]
+        if not real_slots:
+            real_slots = business_config.get("appointment_hours", [])
+ 
+        chosen_time = msg.strip()
+        if chosen_time.isdigit():
+            idx = int(chosen_time) - 1
+            if 0 <= idx < len(real_slots):
+                chosen_time = real_slots[idx]
+ 
         update_state(conversation_id, appt_time=chosen_time, appt_stage="await_confirm")
-        resp = questions["confirm"].format(
+        resp = business_config["appointment_questions"]["confirm"].format(
             date=st.appt_date or msg,
             time=chosen_time,
             service=st.appt_service or "",
@@ -287,21 +352,45 @@ def appointment_flow_node(s: BotState) -> BotState:
             return s
 
         # Confirmado: guardar cita
-        # TODO: aquí llamaremos a calendar_service.create_event() cuando esté listo.
+        # Confirmado: crear cita en Google Calendar
+        from oberoende_bot.app.services.calendar_service import create_event
+ 
         st_final = get_state(conversation_id)
         service  = st_final.appt_service or ""
         date     = st_final.appt_date    or ""
-        time     = st_final.appt_time    or ""
-
+        time_    = st_final.appt_time    or ""
+ 
+        calendar_id      = business_config.get("calendar_id", "")
+        credentials_path = business_config.get("calendar_credentials_path", "")
+        duration_min     = business_config.get("appointment_duration_minutes", 30)
+ 
+        event_id = None
+        if calendar_id and credentials_path:
+            event_id = create_event(
+                calendar_id=calendar_id,
+                credentials_path=credentials_path,
+                date_str=date,
+                time_str=time_,
+                duration_min=duration_min,
+                service_name=service,
+                client_name=profile_name,
+                client_phone=user_phone,
+            )
+            if event_id:
+                print(f"✅ [Graph] Cita creada en Calendar: {event_id}")
+            else:
+                print("⚠️ [Graph] No se pudo crear en Calendar, solo email.")
+ 
         # Notificación por email al dueño del negocio
         email_text = (
             "NUEVA CITA AGENDADA\n\n"
-            f"Negocio:  {business_config['name']}\n"
-            f"Cliente:  {user_phone}\n"
-            f"Nombre:   {profile_name}\n"
-            f"Servicio: {service}\n"
-            f"Fecha:    {date}\n"
-            f"Hora:     {time}\n"
+            f"Negocio:   {business_config['name']}\n"
+            f"Cliente:   {user_phone}\n"
+            f"Nombre:    {profile_name}\n"
+            f"Servicio:  {service}\n"
+            f"Fecha:     {date}\n"
+            f"Hora:      {time_}\n"
+            f"Event ID:  {event_id or 'N/A (Calendar no configurado)'}\n"
         )
         try:
             notify_owner_lead(
@@ -312,8 +401,10 @@ def appointment_flow_node(s: BotState) -> BotState:
             )
         except Exception as e:
             print("⚠️ Error enviando email de cita:", repr(e))
-
-        resp = questions["success"].format(date=date, time=time, service=service)
+ 
+        resp = business_config["appointment_questions"]["success"].format(
+            date=date, time=time_, service=service
+        )
         s["response"] = resp
         add_ai_message(conversation_id, resp)
         update_state(
@@ -322,6 +413,7 @@ def appointment_flow_node(s: BotState) -> BotState:
             pending_followup=False,
             appt_stage=None, appt_service=None,
             appt_date=None, appt_time=None,
+            appt_event_id=event_id,   # guardamos el ID por si el usuario cancela después
         )
         return s
 

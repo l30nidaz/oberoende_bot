@@ -195,6 +195,121 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "whatsapp_token": os.getenv("OBEROENDE_WHATSAPP_TOKEN", "").strip(),
         "whatsapp_phone_number_id": os.getenv("OBEROENDE_META_PHONE_NUMBER_ID", "").strip(),
 },
+# ─────────────────────────────────────────────────────────────────────────
+    # PRUEBAS — Negocio de pruebas para desarrollo y testing de Google Calendar
+    # Asigna tu número prepago a PRUEBAS_META_PHONE_NUMBER_ID en el .env
+    # ─────────────────────────────────────────────────────────────────────────
+    "pruebas": {
+        # ── Identidad ─────────────────────────────────────────────────────────
+        "business_id": "pruebas",
+        "name":        "Consultorio Pruebas",
+        "emoji":       "🧪",
+        "industry":    "salud / consultoría",
+
+        # ── Roles del asistente ───────────────────────────────────────────────
+        "assistant_role": (
+            "Eres el asistente virtual de Consultorio Pruebas. "
+            "Ayudas a los pacientes a agendar y cancelar citas de forma sencilla. "
+            "Sé amable, claro y conciso."
+        ),
+        "router_role": (
+            "Eres un router de conversación para un consultorio médico. "
+            "Clasifica la intención del usuario: agendar cita, cancelar, "
+            "consultar información o pedir asesor humano."
+        ),
+
+        # ── Menú principal ────────────────────────────────────────────────────
+        "menu_title": "¡Hola! 👋 Bienvenido a Consultorio Pruebas 🧪",
+        "menu_options": [
+            "1️⃣ Agendar una cita",
+            "2️⃣ Cancelar o modificar mi cita",
+            "3️⃣ Información y servicios",
+            "4️⃣ Hablar con un asesor",
+        ],
+        "menu_routing": {
+            "1": "appointment",
+            "2": "cancel_appointment",
+            "3": "faq_rag",
+            "4": "handoff",
+        },
+
+        # ── Canal WhatsApp ────────────────────────────────────────────────────
+        # Agrega en tu .env:  PRUEBAS_META_PHONE_NUMBER_ID=<phone_number_id de Meta>
+        "channel_ids": [
+            os.getenv("PRUEBAS_META_PHONE_NUMBER_ID", "").strip(),
+        ],
+
+        # ── Notificaciones por email ──────────────────────────────────────────
+        "lead_email_subject": "Nueva cita agendada - Consultorio Pruebas",
+
+        # ── RAG / base de conocimiento ────────────────────────────────────────
+        "documents_path":   "oberoende_bot/data/businesses/pruebas/documentos",
+        "vectorstore_path": "oberoende_bot/data/businesses/pruebas/vectorstore",
+
+        # ── Google Calendar ───────────────────────────────────────────────────
+        # 1. Crea una Service Account en Google Cloud Console
+        # 2. Descarga el JSON y ponlo en secrets/pruebas_calendar.json
+        # 3. Comparte tu Google Calendar con el email de la Service Account
+        # 4. Copia el calendar_id (email del calendario) aquí o en el .env
+        "calendar_id":                   os.getenv("PRUEBAS_CALENDAR_ID", "").strip(),
+        "calendar_credentials_path":     "secrets/pruebas_calendar.json",
+        "appointment_duration_minutes":  30,
+        "appointment_hours": [
+            "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+            "15:00", "15:30", "16:00", "16:30", "17:00",
+        ],
+        "appointment_days": [0, 1, 2, 3, 4],  # lunes a viernes
+
+        # ── Textos del flujo de cita ──────────────────────────────────────────
+        "appointment_questions": {
+            "service": (
+                "¿Para qué tipo de consulta necesitas la cita? 🩺\n\n"
+                "Puedes escribir algo como:\n"
+                "• *Consulta general*\n"
+                "• *Control de presión*\n"
+                "• *Revisión de resultados*"
+            ),
+            "date": (
+                "¿Qué día te viene bien? 📅\n\n"
+                "Puedes escribir:\n"
+                "• *Mañana*\n"
+                "• *El lunes*\n"
+                "• *14/04*"
+            ),
+            "time": (
+                "✅ Estos horarios están disponibles el {date}:\n\n"
+                "{slots}\n\n"
+                "¿Cuál prefieres? Escribe el número o la hora directamente."
+            ),
+            "confirm": (
+                "Confirmando tu cita 📋\n\n"
+                "📅 *Fecha:* {date}\n"
+                "🕐 *Hora:* {time}\n"
+                "🩺 *Consulta:* {service}\n\n"
+                "¿Confirmas? Responde *sí* o *no*."
+            ),
+            "success": (
+                "¡Cita agendada con éxito! 🎉\n\n"
+                "📅 *{date}* a las *{time}*\n"
+                "🩺 *{service}*\n\n"
+                "Te enviaremos un recordatorio. "
+                "Si necesitas cancelar o cambiar la fecha, escríbeme aquí mismo."
+            ),
+            "cancel_ask": (
+                "Para cancelar tu cita necesito verificar tu reserva. 🔍\n\n"
+                "Por favor dime tu *número de WhatsApp* con el que agendaste "
+                "(o simplemente escribe *mi número* y lo busco automáticamente)."
+            ),
+            "cancel_success": (
+                "✅ Tu cita ha sido cancelada correctamente.\n\n"
+                "Cuando quieras agendar una nueva, escríbeme y con gusto te ayudo. 😊"
+            ),
+            "no_slots": (
+                "😔 No hay horarios disponibles el {date}.\n\n"
+                "¿Te gustaría intentar con otro día?"
+            ),
+        },
+    },
 
     # ─────────────────────────────────────────────────────────────────────────
     # AGREGA AQUÍ TUS CLIENTES REALES
