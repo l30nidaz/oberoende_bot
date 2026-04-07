@@ -1,0 +1,83 @@
+# ¿Qué es Oberoende?
+
+Oberoende es una empresa peruana de tecnología especializada en soluciones de atención al cliente por WhatsApp. Ofrecemos asistentes virtuales inteligentes y sistemas de gestión de citas para negocios que necesitan automatizar su comunicación con clientes.
+
+Nuestro sistema permite que los clientes de tu negocio puedan hacer consultas, agendar citas y recibir información de forma automática las 24 horas del día, los 7 días de la semana, sin necesidad de que una persona esté disponible en todo momento.
+
+# ¿Para qué tipo de negocios es Oberoende?
+
+Oberoende está diseñado para cualquier negocio que atienda clientes por cita previa o que reciba consultas frecuentes por WhatsApp. Algunos ejemplos:
+
+- Clínicas odontológicas
+- Peluquerías y barberías
+- Centros de estética y spas
+- Consultorios médicos y psicológicos
+- Centros de fisioterapia
+- Estudios de tatuajes y piercing
+- Consultorías y asesorías
+- Cualquier negocio que gestione citas o reservas
+
+# ¿Cómo funciona?
+
+El asistente de Oberoende se conecta al número de WhatsApp de tu negocio. Cuando un cliente escribe, el bot responde automáticamente usando la información de tu negocio: servicios, precios, horarios, ubicación y más. También puede agendar citas directamente en tu calendario de Google sin que tengas que intervenir.
+
+# Planes y precios
+
+## Plan Básico — S/ 149 / mes
+- 1 número de WhatsApp
+- Respuestas automáticas con información del negocio
+- Hasta 500 conversaciones al mes
+- Soporte por email
+- Ideal para negocios pequeños que están comenzando
+
+## Plan Profesional — S/ 299 / mes
+- 1 número de WhatsApp
+- Respuestas automáticas con información del negocio
+- Gestión de citas con Google Calendar
+- Hasta 1,500 conversaciones al mes
+- Notificaciones al dueño por WhatsApp y email cuando hay una cita nueva
+- Panel de administración con métricas y reportes
+- Soporte prioritario por WhatsApp
+- Ideal para clínicas, peluquerías y consultorios en crecimiento
+
+## Plan Empresarial — S/ 549 / mes
+- Hasta 3 números de WhatsApp
+- Todo lo incluido en el Plan Profesional
+- Conversaciones ilimitadas
+- Personalización avanzada del asistente
+- Integración con sistemas externos bajo consulta
+- Soporte dedicado con tiempo de respuesta garantizado
+- Ideal para cadenas, franquicias o negocios con múltiples sedes
+
+## Plan Demo — Gratis por 2 semanas
+Antes de contratar cualquier plan, ofrecemos una demo gratuita de 2 semanas donde puedes probar el sistema completo con la información real de tu negocio. Sin tarjeta de crédito, sin compromisos.
+
+# ¿Cómo solicitar la demo?
+
+Puedes solicitar tu demo gratuita de 2 semanas escribiéndonos directamente por este WhatsApp o enviando un correo a support@gmail.com. Un asesor de Oberoende se pondrá en contacto contigo para configurar el sistema con la información de tu negocio.
+
+# Contacto
+
+- Email: support@gmail.com
+- WhatsApp: este mismo número
+- Empresa: Oberoende — Lima, Perú
+
+# Preguntas frecuentes
+
+## ¿Necesito saber programar para usar Oberoende?
+No. Nosotros nos encargamos de toda la configuración técnica. Tú solo nos proporcionas la información de tu negocio y nosotros hacemos el resto.
+
+## ¿El bot responde fuera de horario de oficina?
+Sí, el asistente está disponible las 24 horas del día, los 7 días de la semana, incluyendo feriados.
+
+## ¿Puedo cambiar la información del bot cuando quiera?
+Sí. Si cambias tus precios, servicios u horarios, nos avisas y actualizamos el sistema en menos de 24 horas.
+
+## ¿El bot puede agendar citas en mi Google Calendar?
+Sí, a partir del Plan Profesional el bot se integra con tu Google Calendar y agenda las citas automáticamente, enviando confirmación tanto al cliente como al dueño del negocio.
+
+## ¿Qué pasa si el cliente hace una pregunta que el bot no sabe responder?
+El bot está entrenado para derivar la consulta a un asesor humano cuando no puede responderla, para que ningún cliente quede sin atención.
+
+## ¿Puedo probar el sistema antes de contratar?
+Sí, ofrecemos una demo gratuita de 2 semanas sin necesidad de tarjeta de crédito ni compromisos.
