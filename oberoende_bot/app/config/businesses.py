@@ -205,7 +205,9 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
         "name":        "Consultorio Pruebas",
         "emoji":       "🧪",
         "industry":    "salud / consultoría",
-
+        "whatsapp_app_secret":     os.getenv("PRUEBAS_APP_SECRET", "").strip(),
+        "whatsapp_token":          os.getenv("PRUEBAS_WHATSAPP_TOKEN", "").strip(),
+        "whatsapp_phone_number_id": os.getenv("PRUEBAS_META_PHONE_NUMBER_ID", "").strip(),
         # ── Roles del asistente ───────────────────────────────────────────────
         "assistant_role": (
             "Eres el asistente virtual de Consultorio Pruebas. "
