@@ -281,11 +281,11 @@ def create_event(
         ),
         "start": {
             "dateTime": start_dt.isoformat(),
-            "timeZone": DEFAULT_TZ,
+            "timeZone": "America/Lima",
         },
         "end": {
             "dateTime": end_dt.isoformat(),
-            "timeZone": DEFAULT_TZ,
+            "timeZone": "America/Lima",
         },
         "reminders": {
             "useDefault": False,
