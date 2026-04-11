@@ -35,8 +35,6 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_
         body_bytes,
         hashlib.sha256,
     ).hexdigest()
-    """print(f"🔐 HMAC esperado: {expected}")
-    print(f"🔐 HMAC recibido: {signature_header}")"""
     # Comparación en tiempo constante para evitar timing attacks
     return hmac.compare_digest(expected, signature_header)
 
@@ -292,7 +290,8 @@ async def handle_incoming_whatsapp(request: Request):
     business_config = resolve_business_by_channel(phone_number_id)
     
     # 4. Verificar HMAC con el secret del negocio correspondiente
-    app_secret = business_config.get("whatsapp_app_secret", "").strip()
+    #app_secret = business_config.get("whatsapp_app_secret", "").strip()
+    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
     signature = request.headers.get("X-Hub-Signature-256")
     
 
