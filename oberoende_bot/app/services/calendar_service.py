@@ -270,7 +270,6 @@ def create_event(
     start_dt = datetime(
         parsed_date.year, parsed_date.month, parsed_date.day,
         parsed_time.hour, parsed_time.minute,
-        tzinfo=tz,
     )
     end_dt = start_dt + timedelta(minutes=duration_min)
 
