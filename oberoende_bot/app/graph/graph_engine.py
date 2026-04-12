@@ -177,7 +177,7 @@ def appointment_flow_node(s: BotState) -> BotState:
     questions    = business_config["appointment_questions"]
 
     # ── Cancelación explícita del flujo ──────────────────────────────────────
-    if msg_lower in {"cancelar", "salir", "no quiero", "olvidalo", "olvídalo"}:
+    if msg_lower in {"cancelar", "salir", "no quiero", "olvidalo", "olvídalo","menu", "menú", "inicio", "start"}:
         resp = "Entendido ✅ Cuando quieras, escríbeme para agendar una cita."
         s["response"] = resp
         add_ai_message(conversation_id, resp)
@@ -222,7 +222,10 @@ def appointment_flow_node(s: BotState) -> BotState:
         questions        = business_config["appointment_questions"]
  
         # El usuario puede decir "mi número" → usar su propio teléfono
-        lookup_phone = user_phone if "mi número" in msg.lower() else msg.strip()
+        if stage == "await_cancel" and "mi número" in msg_lower:
+            lookup_phone = user_phone
+        else:
+            lookup_phone = msg.strip()
  
         cancelled_count = 0
         if calendar_id and credentials_path:
