@@ -40,16 +40,18 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_
 
 
 def _get_config(business_config: dict = None):
-    if business_config:
-        token = business_config.get("whatsapp_token", "")
-        phone_number_id = business_config.get("whatsapp_phone_number_id", "")
-    else:
-        token = os.getenv("WHATSAPP_TOKEN")
-        phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    token = os.getenv("WHATSAPP_TOKEN")
     graph_api_version = os.getenv("WHATSAPP_GRAPH_VERSION", "v25.0")
+
+    # Intenta resolver el Phone ID según el negocio activo
+    default_bid = os.getenv("DEFAULT_BUSINESS_ID", "").strip().upper()
+    phone_number_id = (
+        os.getenv(f"{default_bid}_META_PHONE_NUMBER_ID", "").strip()
+        or os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+    )
+
     base_url = f"https://graph.facebook.com/{graph_api_version}/{phone_number_id}/messages"
     return token, phone_number_id, graph_api_version, base_url
-
 
 def _headers(business_config: dict = None):
     token, _, _, _ = _get_config(business_config)

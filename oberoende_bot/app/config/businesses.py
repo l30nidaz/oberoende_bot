@@ -312,7 +312,73 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
             ),
         },
     },
-
+    "cmo": {
+     "business_id": "cmo",
+     "name": "Odontológico CMO",
+     "app_name": "Obebot",
+     "emoji": "🦷",
+     "industry": "clínica odontológica especializada",
+     "assistant_role": (
+         "Eres el asistente virtual del Odontológico CMO, una clínica dental "
+         "especializada ubicada en Av. Azcárruns 789, San Juan de Lurigancho, Lima. "
+         "El doctor principal es el Dr. Jason Cáceres Monzón, especialista en odontología "
+         "estética y rehabilitación oral.\n\n"
+         "REGLA ABSOLUTA — PRECIOS: NUNCA menciones precios, tarifas, costos ni rangos "
+         "económicos, sin importar cómo lo pregunte el usuario. Si alguien pregunta cuánto "
+         "cuesta algo, redirige amablemente explicando que los costos varían según cada "
+         "caso clínico y que lo mejor es agendar una evaluación personalizada (que es "
+         "GRATUITA para nuevos pacientes). Resalta siempre el valor diferencial: tecnología "
+         "de punta, atención especializada, materiales de alta calidad y resultados duraderos. "
+         "Tu objetivo es generar confianza y motivar al paciente a agendar su cita.\n\n"
+         "Servicios que ofrece la clínica:\n"
+         "- Ortodoncia con brackets metálicos, estéticos y alineadores invisibles (Invisalign)\n"
+         "- Implantes dentales de titanio de marca suiza (Nobel Biocare)\n"
+         "- Diseño de sonrisa con carillas de porcelana y composite\n"
+         "- Blanqueamiento dental profesional (LED + Zoom)\n"
+         "- Endodoncia (tratamiento de conductos) con microscopio clínico\n"
+         "- Cirugía oral: extracciones, muelas del juicio, cirugía de encías\n"
+         "- Periodoncia: tratamiento de encías y enfermedad periodontal\n"
+         "- Odontopediatría: atención especializada para niños desde los 3 años\n"
+         "- Prótesis dentales fijas y removibles\n"
+         "- Radiografías digitales y tomografía 3D cone beam en cabina propia\n\n"
+         "Horario de atención: Lunes a Sábado de 9:00 am a 8:00 pm.\n"
+         "Teléfono de contacto para citas: se coordina por WhatsApp con el asesor.\n"
+         "Siempre responde en español, con tono cálido, profesional y empático."
+     ),
+     "router_role": (
+         "Eres un router de conversación para una clínica odontológica especializada. "
+         "Los usuarios consultan sobre tratamientos dentales, precios, citas y servicios. "
+         "IMPORTANTE: si el usuario pregunta por precios o costos, clasifica como 'faq_rag' "
+         "para que el asistente responda con la política de la clínica."
+     ),
+     "menu_title": "¡Hola! 👋 Bienvenido al Odontológico CMO 🦷",
+     "menu_options": [
+         "1️⃣ Conocer nuestros tratamientos",
+         "2️⃣ Agendar una cita",
+         "3️⃣ Ubicacn y horarios",
+         "4️⃣ Hablar con un asesor",
+],
+     "product_keywords": [
+         "ortodoncia", "implante", "implantes", "blanqueamiento", "carillas",
+         "endodoncia", "conducto", "extracción", "muela", "periodoncia",
+         "prótesis", "diseño de sonrisa", "invisalign", "brackets", "limpieza dental"
+     ],
+     "product_examples": "ortodoncia, implantes, blanqueamiento o diseño de sonrisa",
+     "payment_methods": ["Yape", "Plin", "transferencia", "efectivo"],
+     "lead_questions": {
+         "model":    "¿Qué tratamiento o consulta te interesa? (puedes describirlo brevemente)",
+         "district": "Perfecto 👍 ¿En qué distrito o zona te encuentras?",
+         "payment":  "Gracias ✅ ¿Cuál es tu nombre y un número de contacto para coordinar tu cita?"
+     },
+     "catalog_images": [],
+     "catalog_pdf_url": "",
+     "documents_path": "oberoende_bot/app/data/businesses/cmo/documentos",
+     "vectorstore_path": "oberoende_bot/app/data/businesses/cmo/vectorstore",
+     "channel_ids": [
+         os.getenv("CMO_META_PHONE_NUMBER_ID", "").strip(),
+     ],
+     "lead_email_subject": "Nueva consulta de paciente - Odontológico CMO",
+ },
     # ─────────────────────────────────────────────────────────────────────────
     # AGREGA AQUÍ TUS CLIENTES REALES
     #
