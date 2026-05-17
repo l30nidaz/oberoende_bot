@@ -355,9 +355,15 @@ BUSINESSES: Dict[str, Dict[str, Any]] = {
      "menu_options": [
          "1️⃣ Conocer nuestros tratamientos",
          "2️⃣ Agendar una cita",
-         "3️⃣ Ubicacn y horarios",
+         "3️⃣ Ubicación y horarios",
          "4️⃣ Hablar con un asesor",
 ],
+    "menu_routing": {
+        "1": "faq_rag",
+        "2": "appointment",
+        "3": "faq_rag",
+        "4": "handoff",
+    },
      "product_keywords": [
          "ortodoncia", "implante", "implantes", "blanqueamiento", "carillas",
          "endodoncia", "conducto", "extracción", "muela", "periodoncia",
