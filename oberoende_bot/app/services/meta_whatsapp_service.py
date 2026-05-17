@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import os
@@ -7,23 +8,11 @@ from fastapi.responses import JSONResponse
 
 
 # ── Constantes de seguridad ──────────────────────────────────────────────────
-# Máximo de caracteres que se pasan al LLM. Mensajes más largos se truncan
-# silenciosamente — el usuario recibe respuesta normal, solo se recorta el input.
 MAX_MESSAGE_LENGTH = 250
 
 
 def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_secret: str) -> bool:
-    """
-    Verifica que el webhook viene realmente de Meta usando HMAC-SHA256.
-    Meta firma cada request con tu App Secret y lo envía en el header
-    X-Hub-Signature-256 como 'sha256=<hex_digest>'.
-
-    Si WHATSAPP_APP_SECRET no está configurado, se omite la verificación
-    (útil en desarrollo local con ngrok). En producción siempre debe estar.
-    """
-
     if not app_secret:
-        # Sin secret configurado → modo dev, se omite la verificación
         return True
 
     if not signature_header or not signature_header.startswith("sha256="):
@@ -35,7 +24,6 @@ def _verify_hmac_signature(body_bytes: bytes, signature_header: str | None, app_
         body_bytes,
         hashlib.sha256,
     ).hexdigest()
-    # Comparación en tiempo constante para evitar timing attacks
     return hmac.compare_digest(expected, signature_header)
 
 
@@ -43,7 +31,6 @@ def _get_config(business_config: dict = None):
     token = os.getenv("WHATSAPP_TOKEN")
     graph_api_version = os.getenv("WHATSAPP_GRAPH_VERSION", "v25.0")
 
-    # Intenta resolver el Phone ID según el negocio activo
     default_bid = os.getenv("DEFAULT_BUSINESS_ID", "").strip().upper()
     phone_number_id = (
         os.getenv(f"{default_bid}_META_PHONE_NUMBER_ID", "").strip()
@@ -52,6 +39,7 @@ def _get_config(business_config: dict = None):
 
     base_url = f"https://graph.facebook.com/{graph_api_version}/{phone_number_id}/messages"
     return token, phone_number_id, graph_api_version, base_url
+
 
 def _headers(business_config: dict = None):
     token, _, _, _ = _get_config(business_config)
@@ -121,11 +109,6 @@ def send_whatsapp_document(
 
 
 def send_whatsapp_buttons(to_number: str, body: str, buttons: list[str]):
-    """
-    Envía un mensaje interactivo con botones de respuesta rápida (máx. 3).
-    Cuando el usuario toca un botón, WhatsApp envía su título como mensaje de texto,
-    que el bot recibe igual que cualquier otro mensaje.
-    """
     _, _, _, base_url = _get_config()
 
     if len(buttons) > 3:
@@ -144,7 +127,7 @@ def send_whatsapp_buttons(to_number: str, body: str, buttons: list[str]):
                         "type": "reply",
                         "reply": {
                             "id": f"btn_{i}",
-                            "title": btn[:20],  # API limit: 20 chars
+                            "title": btn[:20],
                         },
                     }
                     for i, btn in enumerate(buttons)
@@ -186,11 +169,10 @@ def send_catalog_whatsapp(to_number: str, business_config: dict):
     send_whatsapp_text(to_number, cta_text)
 
 
-# ── Tipos de mensaje que el usuario puede mandar y que no son texto ───────────
+# ── Tipos de mensaje ──────────────────────────────────────────────────────────
 _MEDIA_FALLBACK_MSG = (
     "Vi que enviaste {media_type} 📎\n"
-    "Por ahora solo puedo leer texto. Escríbeme el nombre del modelo "
-    "que te interesa y te ayudo con precio, stock y detalles. ✨"
+    "Por ahora solo puedo leer texto. Escríbeme tu consulta y te ayudo. ✨"
 )
 
 _MEDIA_TYPE_LABELS = {
@@ -205,16 +187,6 @@ _MEDIA_TYPE_LABELS = {
 
 
 def _extract_message(payload: dict) -> tuple[str | None, str | None, str | None, str | None]:
-    """
-    Parsea el webhook de Meta y devuelve:
-        (from_number, message_body, channel_id, message_id)
-
-    - message_body es None si el tipo no es procesable como texto.
-    - Si el mensaje es de tipo multimedia, message_body toma un texto de
-      fallback para que el usuario reciba una respuesta explicativa en vez
-      de silencio.
-    - message_id se devuelve siempre que esté disponible para deduplicación.
-    """
     try:
         entry = payload["entry"][0]
         changes = entry["changes"][0]
@@ -230,14 +202,12 @@ def _extract_message(payload: dict) -> tuple[str | None, str | None, str | None,
         msg = messages[0]
         from_number = msg.get("from")
         msg_type = msg.get("type")
-        message_id = msg.get("id")  # ← usado para deduplicación
+        message_id = msg.get("id")
 
-        # Texto plano
         if msg_type == "text":
             body = msg["text"]["body"]
             return from_number, body, phone_number_id, message_id
 
-        # Botones / listas interactivas
         if msg_type == "interactive":
             interactive = msg.get("interactive", {})
             if interactive.get("type") == "button_reply":
@@ -245,14 +215,11 @@ def _extract_message(payload: dict) -> tuple[str | None, str | None, str | None,
             if interactive.get("type") == "list_reply":
                 return from_number, interactive["list_reply"]["title"], phone_number_id, message_id
 
-        # Multimedia u otro tipo: responde con mensaje explicativo
-        # en vez de ignorar al usuario por completo.
         if msg_type in _MEDIA_TYPE_LABELS:
             label = _MEDIA_TYPE_LABELS[msg_type]
             fallback = _MEDIA_FALLBACK_MSG.format(media_type=label)
             return from_number, fallback, phone_number_id, message_id
 
-        # Tipo completamente desconocido → ignorar
         return from_number, None, phone_number_id, message_id
 
     except Exception as e:
@@ -260,42 +227,75 @@ def _extract_message(payload: dict) -> tuple[str | None, str | None, str | None,
         return None, None, None, None
 
 
-# ── Constantes para mensajes de rate limit ───────────────────────────────────
 _RATE_LIMIT_MSG = (
     "Estás enviando mensajes muy rápido 😅 "
     "Dame un momento y escríbeme de nuevo."
 )
 
 
+# ── Procesamiento en background ───────────────────────────────────────────────
+
+async def _process_message(
+    from_number: str,
+    channel_id: str,
+    message_body: str,
+    business_config: dict,
+):
+    """
+    Ejecuta el grafo y envía la respuesta al usuario.
+    Se llama como background task para que Meta reciba el 200 OK
+    antes de los 5 segundos y no reintente el webhook.
+    """
+    from oberoende_bot.app.graph.graph_engine import graph
+
+    try:
+        result = graph.invoke(
+            {
+                "user_id": from_number,
+                "channel_id": channel_id or "",
+                "conversation_id": "",
+                "business_id": "",
+                "business_config": {},
+                "user_message": message_body,
+                "response": "",
+                "decision": None,
+            },
+            config={"metadata": {"conversation_id": from_number}},
+        )
+        response_text = result["response"]
+
+        if response_text:
+            send_whatsapp_text(from_number, response_text, business_config=business_config)
+
+    except Exception as e:
+        print("⚠️ Error en _process_message:", repr(e))
+
+
+# ── Handler principal ─────────────────────────────────────────────────────────
+
 async def handle_incoming_whatsapp(request: Request):
-    # ── Verificación HMAC ─────────────────────────────────────────────────────
-    # Leemos el body como bytes ANTES de parsearlo como JSON para poder
-    # calcular el HMAC sobre los bytes crudos, tal como lo hace Meta.
+    # 1. Leer body como bytes para HMAC
     body_bytes = await request.body()
 
-    
-    # 1. Parsear payload primero
+    # 2. Parsear JSON
     import json
     try:
         payload = json.loads(body_bytes)
     except Exception:
         return JSONResponse({"status": "ignored"}, status_code=200)
-    
-    # 2. Extraer phone_number_id para identificar el negocio
+
+    # 3. Extraer phone_number_id y resolver negocio
     try:
         phone_number_id = payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
     except Exception:
         phone_number_id = None
-    
-    # 3. Resolver negocio por channel_id
+
     from oberoende_bot.app.config.businesses import resolve_business_by_channel
     business_config = resolve_business_by_channel(phone_number_id)
-    
-    # 4. Verificar HMAC con el secret del negocio correspondiente
-    #app_secret = business_config.get("whatsapp_app_secret", "").strip()
+
+    # 4. Verificar HMAC
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
     signature = request.headers.get("X-Hub-Signature-256")
-    
 
     print(f"📱 phone_number_id recibido: {phone_number_id}")
     print(f"🏢 negocio resuelto: {business_config['business_id']}")
@@ -304,23 +304,22 @@ async def handle_incoming_whatsapp(request: Request):
     if app_secret and not _verify_hmac_signature(body_bytes, signature, app_secret):
         print(f"🚨 HMAC inválido para negocio {business_config['business_id']}")
         return JSONResponse({"status": "forbidden"}, status_code=403)
-    
 
+    # 5. Extraer datos del mensaje
     from oberoende_bot.app.services.message_id_store import is_duplicate
     from oberoende_bot.app.services.rate_limiter import is_rate_limited
 
     from_number, message_body, channel_id, message_id = _extract_message(payload)
 
-    # ── Descartar si no hay remitente ─────────────────────────────────────────
     if not from_number:
         return JSONResponse({"status": "ignored"}, status_code=200)
 
-    # ── Punto 1: Deduplicación por message_id ─────────────────────────────────
+    # 6. Deduplicación
     if message_id and is_duplicate(message_id):
         print(f"⚠️ Mensaje duplicado ignorado: {message_id}")
         return JSONResponse({"status": "duplicate"}, status_code=200)
 
-    # ── Punto 3: Rate limiting por usuario ────────────────────────────────────
+    # 7. Rate limiting
     if is_rate_limited(from_number):
         try:
             send_whatsapp_text(from_number, _RATE_LIMIT_MSG)
@@ -328,45 +327,20 @@ async def handle_incoming_whatsapp(request: Request):
             print("⚠️ Error enviando aviso de rate limit:", repr(e))
         return JSONResponse({"status": "rate_limited"}, status_code=200)
 
-    # ── Punto 2: Si no hay cuerpo de mensaje procesable, ya viene el fallback ─
-    # _extract_message ya rellenó message_body con texto explicativo para
-    # mensajes multimedia. Si sigue siendo None es un tipo completamente
-    # desconocido → ignorar silenciosamente.
+    # 8. Ignorar si no hay mensaje procesable
     if not message_body:
         return JSONResponse({"status": "ignored"}, status_code=200)
 
-    # ── Límite de tamaño de mensaje ──────────────────────────────────────────
-    # Trunca mensajes excesivamente largos antes de pasarlos al LLM.
-    # Protege contra payload bombing y reduce costos de tokens.
-    if message_body and len(message_body) > MAX_MESSAGE_LENGTH:
+    # 9. Truncar mensajes muy largos
+    if len(message_body) > MAX_MESSAGE_LENGTH:
         print(f"⚠️ Mensaje truncado: {len(message_body)} → {MAX_MESSAGE_LENGTH} chars")
         message_body = message_body[:MAX_MESSAGE_LENGTH]
 
-    from oberoende_bot.app.graph.graph_engine import graph
-
-    result = graph.invoke(
-    {
-        "user_id": from_number,
-        "channel_id": channel_id or "",
-        "conversation_id": "",
-        "business_id": "",
-        "business_config": {},
-        "user_message": message_body,
-        "response": "",
-        "decision": None,
-    },
-    config={
-        "metadata": {
-            "conversation_id": from_number,
-        }
-    }
+    # 10. Lanzar procesamiento en background y responder 200 inmediatamente
+    # Meta exige respuesta en < 5 segundos o reintenta el webhook.
+    # El grafo (LLM + SQLite) puede tardar 2-8 segundos, por eso lo desacoplamos.
+    asyncio.create_task(
+        _process_message(from_number, channel_id, message_body, business_config)
     )
-    response_text = result["response"]
-
-    try:
-        if response_text:
-            send_whatsapp_text(from_number, response_text, business_config=business_config)
-    except Exception as e:
-        print("⚠️ Error enviando respuesta a WhatsApp Meta:", repr(e))
 
     return JSONResponse({"status": "ok"}, status_code=200)
