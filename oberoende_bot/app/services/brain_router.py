@@ -64,7 +64,7 @@ def interpret_message(
 
     chain = prompt | llm | StrOutputParser()
     out = chain.invoke({"state": str(state), "msg": user_message}).strip().lower()
-
+    print(f"soy interpreter_messasge, [Router] Mensaje: '{user_message}' => Decisión: '{out}'")
     valid = {"appointment", "cancel_appointment", "faq_rag", "smalltalk", "handoff"}
     if out not in valid:
         return "faq_rag"
